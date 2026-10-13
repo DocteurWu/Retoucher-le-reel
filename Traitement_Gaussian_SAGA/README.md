@@ -19,10 +19,15 @@ Ce module regroupe l'ensemble des scripts de traitement, de reconstruction 3D et
 Pour faire tourner le pipeline de reconstruction, on installe les paquets de base et l'environnement Python :
 
 ```bash
-# 1. FFmpeg (pour découper le .insv) et COLMAP (pour calculer la 3D)
-sudo apt install -y ffmpeg colmap
+# 1. FFmpeg (pour découper le .insv)
+sudo apt install -y ffmpeg
 
-# 2. Python + YOLO + OpenCV (pour gommer la silhouette sur les images)
+# 2. COLMAP avec support CUDA (carte Nvidia)
+# Conseil : évite "sudo apt install colmap" car la version des dépôts apt n'a souvent pas CUDA activé (très lent).
+# Télécharge plutôt l'AppImage officielle ou la version compilée avec CUDA depuis le GitHub de COLMAP.
+
+# 3. Python + PyTorch CUDA + YOLO + OpenCV (pour gommer la silhouette en accéléré sur GPU)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 pip install ultralytics opencv-python numpy
 ```
 
@@ -114,9 +119,8 @@ for p in sorted(glob.glob("Data/images/*.jpg")):
     if np.any(pmask > 0):
         mask[cv2.dilate(pmask, kernel, iterations=2) > 0] = 0
 
-    # Sauvegarde des masques pour COLMAP et LichtFeld Studio
+    # Sauvegarde du masque pour COLMAP et LichtFeld Studio (COLMAP attend nom_image.jpg.png)
     cv2.imwrite(f"Data/masks/{name}.png", mask)
-    cv2.imwrite(f"Data/masks/{os.path.splitext(name)[0]}.png", mask)
 
     # Fenetre de controle en direct (zone effacee en rouge)
     preview = img.copy()
@@ -143,8 +147,8 @@ Dans l'interface :
 1. **File -> New project** : créer la base de données `Data/database.db` et sélectionner le dossier d'images `Data/images`.
 2. **Processing -> Feature extraction** :
    - Dans les options **ImageReader**, renseigner le champ `mask_path` en pointant vers le dossier `Data/masks`.
-   - Modèle de caméra : `OPENCV` (ou `PINHOLE`), avec une caméra partagée (`single camera`).
-3. **Processing -> Feature matching** : aller dans l'onglet **Sequential**, mettre `overlap` à **20** (au lieu de 10 par défaut, afin de bien relier les 6 caméras sur plusieurs secondes consécutives) puis cliquer sur **Run**.
+   - Modèle de caméra : choisir **PINHOLE** (puisque FFmpeg a déjà redressé les vues en perspective plate rectilinéaire sans distorsion optique) avec caméra partagée (`single camera`). Si besoin de corriger de micro-distorsions, on peut aussi laisser `OPENCV`.
+3. **Processing -> Feature matching** : aller dans l'onglet **Sequential**, régler `overlap` entre **10 et 15** (pour couvrir 2 secondes de déplacement fluide sans risquer de faux raccords sur des murs unis) puis cliquer sur **Run**.
 4. **Reconstruction -> Start reconstruction** : lancer le calcul 3D, puis exporter le modèle sparse via **File -> Export model** dans le dossier existant `Data/sparse/0`.
 
 ### Étape 6 : Entraînement dans LichtFeld Studio
