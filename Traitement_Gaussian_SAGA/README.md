@@ -23,8 +23,7 @@ Pour faire tourner le pipeline de reconstruction, on installe les paquets de bas
 sudo apt install -y ffmpeg
 
 # 2. COLMAP avec support CUDA (carte Nvidia)
-# Conseil : évite "sudo apt install colmap" car la version des dépôts apt n'a souvent pas CUDA activé (très lent).
-# Télécharge plutôt l'AppImage officielle ou la version compilée avec CUDA depuis le GitHub de COLMAP.
+# Téléchargez l'AppImage officielle ou la version compilée avec CUDA depuis le GitHub de COLMAP.
 
 # 3. Python + PyTorch CUDA + YOLO + OpenCV (pour gommer la silhouette en accéléré sur GPU)
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
