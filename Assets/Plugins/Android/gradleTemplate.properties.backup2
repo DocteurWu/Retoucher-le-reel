@@ -1,0 +1,5 @@
+org.gradle.jvmargs=-Xmx4096M -Duser.home=C:/Users/LOUA~1
+systemProp.user.home=C:/Users/LOUA~1
+systemProp.gradle.user.home=C:/Users/LOUA~1/.gradle
+unityStreamingAssets=.unity3d**STREAMING_ASSETS**
+**ADDITIONAL_PROPERTIES**

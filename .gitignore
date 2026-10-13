@@ -54,6 +54,8 @@ Desktop.ini
 # Outils
 node_modules/
 *.log
+Assets/_Project/Code/Editor/QuestBuildScript.cs
+Assets/_Project/Code/Editor/QuestBuildScript.cs.meta
 
 # Captures video brutes (trop lourdes, restent en local - seuls les .ply traites vont dans Assets)
 Captures/*.mp4
