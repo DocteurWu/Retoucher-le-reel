@@ -1,0 +1,105 @@
+# ==============================================================================
+# Unity - dossiers generes, ne jamais committer
+# ==============================================================================
+**/[Ll]ibrary/
+**/[Tt]emp/
+**/[Oo]bj/
+**/[Bb]uild/
+**/[Bb]uilds/
+**/[Ll]ogs/
+**/[Uu]ser[Ss]ettings/
+**/[Mm]emoryCaptures/
+
+# Fichiers autogeneres Unity et IDEs
+*.csproj
+*.unityproj
+*.sln
+*.slnx
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Crash reports
+sysinfo.txt
+*.stackdump
+crashlytics-build.properties
+
+# ==============================================================================
+# Python / Machine Learning / Gaussian Splatting & SAGA
+# ==============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Checkpoints et gros poids de modeles
+*.ckpt
+*.pt
+*.pth
+*.onnx
+
+# Donnees de capture : images gerees par Git LFS (cf. .gitattributes)
+# La video brute 3.2 Go est exclue du repo car depasse la limite HTTP 413 GitLab (voir NOTICE_VIDEO.md)
+*.insv
+Traitement_Gaussian_SAGA/Donnees_Brutes/**/*.insv
+# Checkpoints intermediaires d'optimisation
+Traitement_Gaussian_SAGA/**/checkpoints/
+Traitement_Gaussian_SAGA/**/output/
+
+
+
+# ==============================================================================
+# Systeme d'exploitation & Editeurs
+# ==============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+.vs/
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.code-workspace
+node_modules/
+*.log
