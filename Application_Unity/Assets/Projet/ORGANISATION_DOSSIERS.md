@@ -39,16 +39,7 @@ Tous les éléments développés pour le projet sont regroupés sous `Assets/Pro
   * `Editor/` : Utilitaires et scripts d'automatisation propres à l'éditeur Unity.
   * `Shaders/` : Shaders personnalisés et graphes Shader Graph.
 
----
-
-## 2. Dossiers techniques à la racine du projet
-
-* **`Captures/`** : Dossier local destiné à recevoir les enregistrements et médias bruts volumineux (non versionné sur Git pour préserver la taille du dépôt).
-* **`.gitlab/`** : Modèles de requêtes de fusion (*Merge Requests*) et configuration GitLab.
-
----
-
-## 3. Bonnes pratiques de nommage et de gestion de version
+## 2. Bonnes pratiques de nommage et de gestion de version
 
 1. **Intégrité des fichiers `.meta`** : Tout fichier ou dossier ajouté, renommé ou déplacé dans `Assets/` doit conserver son fichier `.meta` associé.
 2. **Exclusion des répertoires générés** : Les dossiers de cache local (`Library/`, `Temp/`, `Logs/`, `UserSettings/`) ne doivent jamais être intégrés aux commits Git.

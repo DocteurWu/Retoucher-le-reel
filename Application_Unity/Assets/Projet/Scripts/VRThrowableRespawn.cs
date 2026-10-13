@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.XR;
@@ -47,6 +48,19 @@ namespace RemodelerLeReel.VR
         {
             if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
                 return true;
+
+            var devices = new List<XRInputDevice>();
+            InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller, devices);
+            foreach (var dev in devices)
+            {
+                if (dev.isValid)
+                {
+                    if (dev.TryGetFeatureValue(CommonUsages.primaryButton, out bool btn) && btn)
+                        return true;
+                    if (dev.TryGetFeatureValue(CommonUsages.secondaryButton, out bool btn2) && btn2)
+                        return true;
+                }
+            }
 
             XRInputDevice rightHand = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
             if (rightHand.isValid && rightHand.TryGetFeatureValue(CommonUsages.primaryButton, out bool aPressed) && aPressed)

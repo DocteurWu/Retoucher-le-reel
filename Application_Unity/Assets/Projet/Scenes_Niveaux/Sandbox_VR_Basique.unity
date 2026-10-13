@@ -240,7 +240,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RemodelerLeReel.VR.VRGrabHand
   handNode: 4
-  grabRadius: 0.12
+  grabRadius: 0.18
   throwForceMultiplier: 1.35
 --- !u!135 &333109810
 SphereCollider:
@@ -261,7 +261,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 0.12
+  m_Radius: 0.18
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &388191999
 GameObject:
@@ -1963,7 +1963,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RemodelerLeReel.VR.VRGrabHand
   handNode: 5
-  grabRadius: 0.12
+  grabRadius: 0.18
   throwForceMultiplier: 1.35
 --- !u!135 &1703865561
 SphereCollider:
@@ -1984,7 +1984,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 0.12
+  m_Radius: 0.18
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &1726903416
 GameObject:

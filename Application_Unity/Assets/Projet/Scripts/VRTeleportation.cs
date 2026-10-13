@@ -53,7 +53,12 @@ namespace RemodelerLeReel.VR
             if (headCamera == null) headCamera = Camera.main;
 
             string handTag = handNode == XRNode.LeftHand ? "{LeftHand}" : "{RightHand}";
-            _thumbstickAction = new InputAction("TeleportThumbstick", InputActionType.Value, $"<XRController>{handTag}/thumbstick");
+            string handSide = handNode == XRNode.LeftHand ? "leftHand" : "rightHand";
+            _thumbstickAction = new InputAction("TeleportThumbstick", InputActionType.Value);
+            _thumbstickAction.AddBinding($"<XRController>{handTag}/thumbstick");
+            _thumbstickAction.AddBinding($"<XRController>{handTag}/primary2DAxis");
+            _thumbstickAction.AddBinding($"<XRController>{{{handSide}}}/thumbstick");
+            _thumbstickAction.AddBinding($"<XRController>{{{handSide}}}/primary2DAxis");
 
             SetupLineRenderer();
             SetupReticle();
@@ -117,18 +122,52 @@ namespace RemodelerLeReel.VR
         {
             // 1. Essai via XR InputDevice
             XRInputDevice device = InputDevices.GetDeviceAtXRNode(handNode);
+            if (!device.isValid)
+            {
+                var inputDevices = new List<XRInputDevice>();
+                InputDeviceCharacteristics characteristics = InputDeviceCharacteristics.Controller |
+                    (handNode == XRNode.LeftHand ? InputDeviceCharacteristics.Left : InputDeviceCharacteristics.Right);
+                InputDevices.GetDevicesWithCharacteristics(characteristics, inputDevices);
+                if (inputDevices.Count > 0)
+                {
+                    device = inputDevices[0];
+                }
+            }
+
             if (device.isValid && device.TryGetFeatureValue(CommonUsages.primary2DAxis, out Vector2 axis))
             {
                 return axis;
             }
 
-            // 2. Fallback via Input System
-            if (_thumbstickAction != null && _thumbstickAction.controls.Count > 0)
+            // 2. Fallback via Input System Action
+            if (_thumbstickAction != null && _thumbstickAction.enabled)
             {
-                return _thumbstickAction.ReadValue<Vector2>();
+                Vector2 val = _thumbstickAction.ReadValue<Vector2>();
+                if (val.sqrMagnitude > 0.01f) return val;
             }
 
-            // 3. Fallback Clavier / Éditeur (Flèche haut ou touche T)
+            // 3. Fallback direct New Input System Devices
+            bool isLeft = handNode == XRNode.LeftHand;
+            var devices = InputSystem.devices;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var dev = devices[i];
+                if (!dev.added) continue;
+                bool isTarget = isLeft
+                    ? (dev.usages.Contains(UnityEngine.InputSystem.CommonUsages.LeftHand) || dev.name.ToLower().Contains("left"))
+                    : (dev.usages.Contains(UnityEngine.InputSystem.CommonUsages.RightHand) || dev.name.ToLower().Contains("right"));
+                if (!isTarget) continue;
+
+                var stick = dev.GetChildControl<UnityEngine.InputSystem.Controls.Vector2Control>("thumbstick") ??
+                            dev.GetChildControl<UnityEngine.InputSystem.Controls.Vector2Control>("primary2DAxis");
+                if (stick != null)
+                {
+                    Vector2 v = stick.ReadValue();
+                    if (v.sqrMagnitude > 0.01f) return v;
+                }
+            }
+
+            // 4. Fallback Clavier / Éditeur (Flèche haut ou touche T)
             if (Keyboard.current != null)
             {
                 if (Keyboard.current.tKey.isPressed || Keyboard.current.upArrowKey.isPressed)

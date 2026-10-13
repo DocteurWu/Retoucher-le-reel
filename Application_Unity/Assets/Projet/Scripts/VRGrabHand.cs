@@ -8,15 +8,16 @@ using XRInputDevice = UnityEngine.XR.InputDevice;
 namespace RemodelerLeReel.VR
 {
     /// <summary>
-    /// Gère le suivi d'une manette VR, la prise (Grab) et le lancer physique (Throw) d'objets Rigidbody.
-    /// Pas de changement de couleur - conserve l'apparence authentique de la manette.
+    /// Gère le suivi spatial haute précision d'une manette VR, la prise (Grab) et le lancer physique (Throw).
+    /// Utilise un suivi 4-niveaux ultra-robuste (XRNodeState, New Input System, XRInputDevice, InputActions)
+    /// pour garantir un tracking 1:1 sans faille sur Meta Quest 3 standalone (OpenXR).
     /// </summary>
     [RequireComponent(typeof(SphereCollider))]
     public class VRGrabHand : MonoBehaviour
     {
         [Header("Configuration Manette")]
         public XRNode handNode = XRNode.RightHand;
-        public float grabRadius = 0.12f;
+        public float grabRadius = 0.18f;
         public float throwForceMultiplier = 1.35f;
 
         private Rigidbody _grabbedBody;
@@ -34,7 +35,10 @@ namespace RemodelerLeReel.VR
         private InputAction _triggerAction;
         private InputAction _posAction;
         private InputAction _rotAction;
+        private InputAction _posPointerAction;
+        private InputAction _rotPointerAction;
 
+        private readonly List<XRNodeState> _nodeStates = new List<XRNodeState>();
         private readonly Collider[] _overlapResults = new Collider[16];
 
         private void Awake()
@@ -44,10 +48,31 @@ namespace RemodelerLeReel.VR
             col.radius = grabRadius;
 
             string handTag = handNode == XRNode.LeftHand ? "{LeftHand}" : "{RightHand}";
-            _gripAction = new InputAction("Grip", InputActionType.Value, $"<XRController>{handTag}/grip");
-            _triggerAction = new InputAction("Trigger", InputActionType.Value, $"<XRController>{handTag}/trigger");
-            _posAction = new InputAction("Position", InputActionType.Value, $"<XRController>{handTag}/devicePosition");
-            _rotAction = new InputAction("Rotation", InputActionType.Value, $"<XRController>{handTag}/deviceRotation");
+            string handSide = handNode == XRNode.LeftHand ? "leftHand" : "rightHand";
+
+            // Actions Boutons de saisie
+            _gripAction = new InputAction("Grip", InputActionType.Value);
+            _gripAction.AddBinding($"<XRController>{handTag}/grip");
+            _gripAction.AddBinding($"<XRController>{handTag}/gripPressed");
+            _gripAction.AddBinding($"<XRController>{{{handSide}}}/grip");
+
+            _triggerAction = new InputAction("Trigger", InputActionType.Value);
+            _triggerAction.AddBinding($"<XRController>{handTag}/trigger");
+            _triggerAction.AddBinding($"<XRController>{handTag}/triggerPressed");
+            _triggerAction.AddBinding($"<XRController>{{{handSide}}}/trigger");
+
+            // Actions Pose (Grip & Pointer)
+            _posAction = new InputAction("Position", InputActionType.Value, expectedControlType: "Vector3");
+            _posAction.AddBinding($"<XRController>{handTag}/devicePosition");
+
+            _rotAction = new InputAction("Rotation", InputActionType.Value, expectedControlType: "Quaternion");
+            _rotAction.AddBinding($"<XRController>{handTag}/deviceRotation");
+
+            _posPointerAction = new InputAction("PointerPosition", InputActionType.Value, expectedControlType: "Vector3");
+            _posPointerAction.AddBinding($"<XRController>{handTag}/pointerPosition");
+
+            _rotPointerAction = new InputAction("PointerRotation", InputActionType.Value, expectedControlType: "Quaternion");
+            _rotPointerAction.AddBinding($"<XRController>{handTag}/pointerRotation");
         }
 
         private void OnEnable()
@@ -56,6 +81,10 @@ namespace RemodelerLeReel.VR
             _triggerAction?.Enable();
             _posAction?.Enable();
             _rotAction?.Enable();
+            _posPointerAction?.Enable();
+            _rotPointerAction?.Enable();
+
+            Application.onBeforeRender += OnBeforeRenderHand;
 
             _lastWorldPos = transform.position;
             _lastWorldRot = transform.rotation;
@@ -63,6 +92,8 @@ namespace RemodelerLeReel.VR
 
         private void OnDisable()
         {
+            Application.onBeforeRender -= OnBeforeRenderHand;
+
             if (_grabbedBody != null)
             {
                 ReleaseObject();
@@ -72,6 +103,14 @@ namespace RemodelerLeReel.VR
             _triggerAction?.Disable();
             _posAction?.Disable();
             _rotAction?.Disable();
+            _posPointerAction?.Disable();
+            _rotPointerAction?.Disable();
+        }
+
+        [BeforeRenderOrder(-20000)]
+        private void OnBeforeRenderHand()
+        {
+            UpdateHandTracking();
         }
 
         private void Update()
@@ -98,30 +137,172 @@ namespace RemodelerLeReel.VR
 
         private void UpdateHandTracking()
         {
-            XRInputDevice device = InputDevices.GetDeviceAtXRNode(handNode);
-            if (device.isValid)
+            Vector3 pos;
+            Quaternion rot;
+
+            // Système de suivi à 4 couches prioritaires :
+            // 1. XRNodeStates (Subsystem natif bas niveau OpenXR)
+            // 2. New Input System Devices (XRController / TrackedDevice)
+            // 3. InputDevices legacy XR (si TryGetFeatureValue disponible)
+            // 4. Input Actions (Bindings par path)
+            if (TryGetPoseFromNodeStates(out pos, out rot) ||
+                TryGetPoseFromInputSystemDevices(out pos, out rot) ||
+                TryGetPoseFromInputDevice(out pos, out rot) ||
+                TryGetPoseFromInputActions(out pos, out rot))
             {
-                if (device.TryGetFeatureValue(CommonUsages.devicePosition, out Vector3 pos))
+                if (pos != Vector3.zero)
                 {
                     transform.localPosition = pos;
                 }
-                if (device.TryGetFeatureValue(CommonUsages.deviceRotation, out Quaternion rot))
+                if (rot != Quaternion.identity)
                 {
                     transform.localRotation = rot;
                 }
-                return;
+            }
+        }
+
+        private bool TryGetPoseFromNodeStates(out Vector3 pos, out Quaternion rot)
+        {
+            pos = Vector3.zero;
+            rot = Quaternion.identity;
+            _nodeStates.Clear();
+            InputTracking.GetNodeStates(_nodeStates);
+
+            for (int i = 0; i < _nodeStates.Count; i++)
+            {
+                var state = _nodeStates[i];
+                if (state.nodeType == handNode)
+                {
+                    bool hasPos = state.TryGetPosition(out pos);
+                    bool hasRot = state.TryGetRotation(out rot);
+                    if ((hasPos && pos != Vector3.zero) || (hasRot && rot != Quaternion.identity))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        private bool TryGetPoseFromInputSystemDevices(out Vector3 pos, out Quaternion rot)
+        {
+            pos = Vector3.zero;
+            rot = Quaternion.identity;
+            bool isLeft = handNode == XRNode.LeftHand;
+
+            var devices = InputSystem.devices;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var dev = devices[i];
+                if (!dev.added) continue;
+
+                bool isTarget = isLeft
+                    ? (dev.usages.Contains(UnityEngine.InputSystem.CommonUsages.LeftHand) || dev.name.ToLower().Contains("left"))
+                    : (dev.usages.Contains(UnityEngine.InputSystem.CommonUsages.RightHand) || dev.name.ToLower().Contains("right"));
+
+                if (!isTarget) continue;
+
+                if (dev is UnityEngine.InputSystem.XR.TrackedDevice trackedDevice)
+                {
+                    if (trackedDevice.devicePosition != null)
+                    {
+                        Vector3 p = trackedDevice.devicePosition.ReadValue();
+                        if (p != Vector3.zero) pos = p;
+                    }
+                    if (trackedDevice.deviceRotation != null)
+                    {
+                        Quaternion r = trackedDevice.deviceRotation.ReadValue();
+                        if (r != Quaternion.identity) rot = r;
+                    }
+                    if (pos != Vector3.zero || rot != Quaternion.identity)
+                    {
+                        return true;
+                    }
+                }
+
+                var posControl = dev.GetChildControl<UnityEngine.InputSystem.Controls.Vector3Control>("devicePosition") ??
+                                 dev.GetChildControl<UnityEngine.InputSystem.Controls.Vector3Control>("pointerPosition");
+                var rotControl = dev.GetChildControl<UnityEngine.InputSystem.Controls.QuaternionControl>("deviceRotation") ??
+                                 dev.GetChildControl<UnityEngine.InputSystem.Controls.QuaternionControl>("pointerRotation");
+
+                if (posControl != null)
+                {
+                    Vector3 p = posControl.ReadValue();
+                    if (p != Vector3.zero) pos = p;
+                }
+                if (rotControl != null)
+                {
+                    Quaternion r = rotControl.ReadValue();
+                    if (r != Quaternion.identity) rot = r;
+                }
+
+                if (pos != Vector3.zero || rot != Quaternion.identity)
+                {
+                    return true;
+                }
             }
 
-            if (_posAction != null && _posAction.controls.Count > 0)
+            return false;
+        }
+
+        private bool TryGetPoseFromInputDevice(out Vector3 pos, out Quaternion rot)
+        {
+            pos = Vector3.zero;
+            rot = Quaternion.identity;
+
+            XRInputDevice device = InputDevices.GetDeviceAtXRNode(handNode);
+            if (!device.isValid)
             {
-                Vector3 pos = _posAction.ReadValue<Vector3>();
-                if (pos != Vector3.zero) transform.localPosition = pos;
+                var inputDevices = new List<XRInputDevice>();
+                InputDeviceCharacteristics characteristics = InputDeviceCharacteristics.Controller |
+                    (handNode == XRNode.LeftHand ? InputDeviceCharacteristics.Left : InputDeviceCharacteristics.Right);
+                InputDevices.GetDevicesWithCharacteristics(characteristics, inputDevices);
+                if (inputDevices.Count > 0)
+                {
+                    device = inputDevices[0];
+                }
             }
-            if (_rotAction != null && _rotAction.controls.Count > 0)
+
+            if (device.isValid)
             {
-                Quaternion rot = _rotAction.ReadValue<Quaternion>();
-                if (rot != Quaternion.identity) transform.localRotation = rot;
+                bool hasP = device.TryGetFeatureValue(CommonUsages.devicePosition, out pos);
+                bool hasR = device.TryGetFeatureValue(CommonUsages.deviceRotation, out rot);
+                if ((hasP && pos != Vector3.zero) || (hasR && rot != Quaternion.identity))
+                {
+                    return true;
+                }
             }
+            return false;
+        }
+
+        private bool TryGetPoseFromInputActions(out Vector3 pos, out Quaternion rot)
+        {
+            pos = Vector3.zero;
+            rot = Quaternion.identity;
+
+            if (_posAction != null && _posAction.enabled)
+            {
+                Vector3 p = _posAction.ReadValue<Vector3>();
+                if (p != Vector3.zero) pos = p;
+            }
+            if (pos == Vector3.zero && _posPointerAction != null && _posPointerAction.enabled)
+            {
+                Vector3 p = _posPointerAction.ReadValue<Vector3>();
+                if (p != Vector3.zero) pos = p;
+            }
+
+            if (_rotAction != null && _rotAction.enabled)
+            {
+                Quaternion r = _rotAction.ReadValue<Quaternion>();
+                if (r != Quaternion.identity) rot = r;
+            }
+            if (rot == Quaternion.identity && _rotPointerAction != null && _rotPointerAction.enabled)
+            {
+                Quaternion r = _rotPointerAction.ReadValue<Quaternion>();
+                if (r != Quaternion.identity) rot = r;
+            }
+
+            return pos != Vector3.zero || rot != Quaternion.identity;
         }
 
         private void SampleHandVelocity()
@@ -147,21 +328,58 @@ namespace RemodelerLeReel.VR
 
         private bool IsGrabPressed()
         {
+            // 1. XRInputDevice legacy
             XRInputDevice device = InputDevices.GetDeviceAtXRNode(handNode);
-            if (device.isValid)
+            if (!device.isValid)
             {
-                if (device.TryGetFeatureValue(CommonUsages.grip, out float gripVal) && gripVal > 0.5f)
-                    return true;
-                if (device.TryGetFeatureValue(CommonUsages.trigger, out float triggerVal) && triggerVal > 0.5f)
-                    return true;
-                if (device.TryGetFeatureValue(CommonUsages.gripButton, out bool gripBtn) && gripBtn)
-                    return true;
-                if (device.TryGetFeatureValue(CommonUsages.triggerButton, out bool triggerBtn) && triggerBtn)
-                    return true;
+                var inputDevices = new List<XRInputDevice>();
+                InputDeviceCharacteristics characteristics = InputDeviceCharacteristics.Controller |
+                    (handNode == XRNode.LeftHand ? InputDeviceCharacteristics.Left : InputDeviceCharacteristics.Right);
+                InputDevices.GetDevicesWithCharacteristics(characteristics, inputDevices);
+                if (inputDevices.Count > 0)
+                {
+                    device = inputDevices[0];
+                }
             }
 
-            if (_gripAction != null && _gripAction.ReadValue<float>() > 0.5f) return true;
-            if (_triggerAction != null && _triggerAction.ReadValue<float>() > 0.5f) return true;
+            if (device.isValid)
+            {
+                if (device.TryGetFeatureValue(CommonUsages.grip, out float gripVal) && gripVal > 0.5f) return true;
+                if (device.TryGetFeatureValue(CommonUsages.trigger, out float triggerVal) && triggerVal > 0.5f) return true;
+                if (device.TryGetFeatureValue(CommonUsages.gripButton, out bool gripBtn) && gripBtn) return true;
+                if (device.TryGetFeatureValue(CommonUsages.triggerButton, out bool triggerBtn) && triggerBtn) return true;
+            }
+
+            // 2. Input Actions
+            if (_gripAction != null && _gripAction.enabled && _gripAction.ReadValue<float>() > 0.5f) return true;
+            if (_triggerAction != null && _triggerAction.enabled && _triggerAction.ReadValue<float>() > 0.5f) return true;
+
+            // 3. New Input System Devices directs
+            bool isLeft = handNode == XRNode.LeftHand;
+            var devices = InputSystem.devices;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var dev = devices[i];
+                if (!dev.added) continue;
+
+                bool isTarget = isLeft
+                    ? (dev.usages.Contains(UnityEngine.InputSystem.CommonUsages.LeftHand) || dev.name.ToLower().Contains("left"))
+                    : (dev.usages.Contains(UnityEngine.InputSystem.CommonUsages.RightHand) || dev.name.ToLower().Contains("right"));
+
+                if (!isTarget) continue;
+
+                var gripControl = dev.GetChildControl<UnityEngine.InputSystem.Controls.AxisControl>("grip");
+                if (gripControl != null && gripControl.ReadValue() > 0.5f) return true;
+
+                var triggerControl = dev.GetChildControl<UnityEngine.InputSystem.Controls.AxisControl>("trigger");
+                if (triggerControl != null && triggerControl.ReadValue() > 0.5f) return true;
+
+                var gripBtn = dev.GetChildControl<UnityEngine.InputSystem.Controls.ButtonControl>("gripPressed");
+                if (gripBtn != null && gripBtn.isPressed) return true;
+
+                var trigBtn = dev.GetChildControl<UnityEngine.InputSystem.Controls.ButtonControl>("triggerPressed");
+                if (trigBtn != null && trigBtn.isPressed) return true;
+            }
 
             return false;
         }

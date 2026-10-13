@@ -1,7 +1,7 @@
 # Module Unity — Application Réalité Virtuelle
 
 Application interactive en Réalité Virtuelle développée sous **Unity 6000.6.2f1** avec le pipeline **Universal Render Pipeline (URP 17.6.0)**.
-Matériel ciblé : **Meta Quest (Standalone)** et simulation XR sur poste de travail.
+Matériel ciblé : **Meta Quest 2/3**  
 
 ---
 
@@ -10,10 +10,6 @@ Matériel ciblé : **Meta Quest (Standalone)** et simulation XR sur poste de tra
 Pour garantir la compatibilité absolue entre tous les membres de l'équipe :
 
 - **Unity Hub** avec la version précise **Unity 6000.6.2f1** (cf. `ProjectSettings/ProjectVersion.txt`).
-- **Modules Unity requis** :
-  - `Android Build Support` + `OpenJDK` + `Android SDK & NDK Tools` (déploiement Quest).
-  - `Windows Build Support` (ou macOS selon votre système).
-- **Git LFS** actif sur votre machine.
 
 ---
 
@@ -22,7 +18,6 @@ Pour garantir la compatibilité absolue entre tous les membres de l'équipe :
 1. Lancez **Unity Hub**.
 2. Cliquez sur **Add** (Ajouter un projet depuis le disque).
 3. Sélectionnez le sous-dossier **`Application_Unity`** (et non la racine du dépôt git).
-4. Laissez Unity importer les assets lors de la première ouverture (génération du dossier local `Library/`).
 
 ---
 

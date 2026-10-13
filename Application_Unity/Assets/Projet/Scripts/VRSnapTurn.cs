@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.XR;
@@ -31,7 +32,12 @@ namespace RemodelerLeReel.VR
             if (headCamera == null) headCamera = Camera.main;
 
             string handTag = handNode == XRNode.RightHand ? "{RightHand}" : "{LeftHand}";
-            _thumbstickAction = new InputAction("SnapTurnThumbstick", InputActionType.Value, $"<XRController>{handTag}/thumbstick");
+            string handSide = handNode == XRNode.RightHand ? "rightHand" : "leftHand";
+            _thumbstickAction = new InputAction("SnapTurnThumbstick", InputActionType.Value);
+            _thumbstickAction.AddBinding($"<XRController>{handTag}/thumbstick");
+            _thumbstickAction.AddBinding($"<XRController>{handTag}/primary2DAxis");
+            _thumbstickAction.AddBinding($"<XRController>{{{handSide}}}/thumbstick");
+            _thumbstickAction.AddBinding($"<XRController>{{{handSide}}}/primary2DAxis");
         }
 
         private void OnEnable()
@@ -74,14 +80,48 @@ namespace RemodelerLeReel.VR
         private float ReadThumbstickX()
         {
             XRInputDevice device = InputDevices.GetDeviceAtXRNode(handNode);
+            if (!device.isValid)
+            {
+                var inputDevices = new List<XRInputDevice>();
+                InputDeviceCharacteristics characteristics = InputDeviceCharacteristics.Controller |
+                    (handNode == XRNode.LeftHand ? InputDeviceCharacteristics.Left : InputDeviceCharacteristics.Right);
+                InputDevices.GetDevicesWithCharacteristics(characteristics, inputDevices);
+                if (inputDevices.Count > 0)
+                {
+                    device = inputDevices[0];
+                }
+            }
+
             if (device.isValid && device.TryGetFeatureValue(CommonUsages.primary2DAxis, out Vector2 axis))
             {
                 return axis.x;
             }
 
-            if (_thumbstickAction != null && _thumbstickAction.controls.Count > 0)
+            if (_thumbstickAction != null && _thumbstickAction.enabled)
             {
-                return _thumbstickAction.ReadValue<Vector2>().x;
+                Vector2 actionVal = _thumbstickAction.ReadValue<Vector2>();
+                if (Mathf.Abs(actionVal.x) > 0.05f) return actionVal.x;
+            }
+
+            // Fallback direct New Input System Devices
+            bool isLeft = handNode == XRNode.LeftHand;
+            var devices = InputSystem.devices;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var dev = devices[i];
+                if (!dev.added) continue;
+                bool isTarget = isLeft
+                    ? (dev.usages.Contains(UnityEngine.InputSystem.CommonUsages.LeftHand) || dev.name.ToLower().Contains("left"))
+                    : (dev.usages.Contains(UnityEngine.InputSystem.CommonUsages.RightHand) || dev.name.ToLower().Contains("right"));
+                if (!isTarget) continue;
+
+                var stick = dev.GetChildControl<UnityEngine.InputSystem.Controls.Vector2Control>("thumbstick") ??
+                            dev.GetChildControl<UnityEngine.InputSystem.Controls.Vector2Control>("primary2DAxis");
+                if (stick != null)
+                {
+                    Vector2 v = stick.ReadValue();
+                    if (Mathf.Abs(v.x) > 0.05f) return v.x;
+                }
             }
 
             // Fallback Clavier (Q / D ou Flèches gauche / droite)
