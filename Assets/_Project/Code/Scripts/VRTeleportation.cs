@@ -80,7 +80,7 @@ namespace RemodelerLeReel.VR
             // Auto-recherche du contrôleur si non renseigné
             if (rayOrigin == null)
             {
-                var hands = FindObjectsByType<VRGrabHand>();
+                var hands = FindObjectsByType<VRGrabHand>(FindObjectsSortMode.None);
                 foreach (var h in hands)
                 {
                     if (h.handNode == handNode)

@@ -76,7 +76,7 @@ namespace RemodelerLeReel.VR
         public void Respawn()
         {
             // Détacher si une main le tient encore
-            VRGrabHand[] hands = FindObjectsByType<VRGrabHand>();
+            VRGrabHand[] hands = FindObjectsByType<VRGrabHand>(FindObjectsSortMode.None);
             foreach (var hand in hands)
             {
                 if (transform.IsChildOf(hand.transform))

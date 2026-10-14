@@ -386,7 +386,7 @@ namespace RemodelerLeReel.VR
             Rigidbody target = FindClosestGrabbable();
             if (target == null) return;
 
-            VRGrabHand[] allHands = FindObjectsByType<VRGrabHand>();
+            VRGrabHand[] allHands = FindObjectsByType<VRGrabHand>(FindObjectsSortMode.None);
             foreach (var otherHand in allHands)
             {
                 if (otherHand != this && otherHand._grabbedBody == target)

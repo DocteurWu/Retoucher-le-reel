@@ -67,5 +67,5 @@
         "*.sln": "*.csproj",
         "*.slnx": "*.csproj"
     },
-    "dotnet.defaultSolution": "Retoucher-le-reel.slnx"
+    "dotnet.defaultSolution": "Retoucher-le-reel.sln"
 }
