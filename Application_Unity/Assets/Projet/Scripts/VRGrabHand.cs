@@ -8,16 +8,22 @@ using XRInputDevice = UnityEngine.XR.InputDevice;
 namespace RemodelerLeReel.VR
 {
     /// <summary>
-    /// Gère le suivi spatial haute précision d'une manette VR, la prise (Grab) et le lancer physique (Throw).
-    /// Utilise un suivi 4-niveaux ultra-robuste (XRNodeState, New Input System, XRInputDevice, InputActions)
-    /// pour garantir un tracking 1:1 sans faille sur Meta Quest 3 standalone (OpenXR).
+    /// Contrôleur VR Complet : Gère le suivi spatial 6-DOF (Position & Rotation) de la manette
+    /// ainsi que la saisie (Grab) et le lancer physique (Throw) d'objets.
+    /// Compatible Meta Quest 3 standalone (OpenXR) et PCVR.
     /// </summary>
     [RequireComponent(typeof(SphereCollider))]
+    [AddComponentMenu("Remodeler le Reel/VR/VR Grab Hand (Contrôleur et Saisie)")]
     public class VRGrabHand : MonoBehaviour
     {
-        [Header("Configuration Manette")]
+        [Header("--- Suivi Spatial de la Manette (6-DOF) ---")]
+        [Tooltip("Main ciblée (LeftHand ou RightHand)")]
         public XRNode handNode = XRNode.RightHand;
+
+        [Header("--- Interaction Physique & Saisie ---")]
+        [Tooltip("Rayon de détection pour attraper les objets")]
         public float grabRadius = 0.18f;
+        [Tooltip("Multiplicateur d'impulsion lors du lancer")]
         public float throwForceMultiplier = 1.35f;
 
         private Rigidbody _grabbedBody;
@@ -49,30 +55,45 @@ namespace RemodelerLeReel.VR
 
             string handTag = handNode == XRNode.LeftHand ? "{LeftHand}" : "{RightHand}";
             string handSide = handNode == XRNode.LeftHand ? "leftHand" : "rightHand";
+            string handPrefix = handNode == XRNode.LeftHand ? "Left" : "Right";
 
             // Actions Boutons de saisie
             _gripAction = new InputAction("Grip", InputActionType.Value);
             _gripAction.AddBinding($"<XRController>{handTag}/grip");
             _gripAction.AddBinding($"<XRController>{handTag}/gripPressed");
             _gripAction.AddBinding($"<XRController>{{{handSide}}}/grip");
+            _gripAction.AddBinding($"<XRController>{{{handSide}}}/gripPressed");
+            _gripAction.AddBinding($"<{handPrefix}HandXRController>/grip");
+            _gripAction.AddBinding($"<{handPrefix}HandXRController>/gripPressed");
 
             _triggerAction = new InputAction("Trigger", InputActionType.Value);
             _triggerAction.AddBinding($"<XRController>{handTag}/trigger");
             _triggerAction.AddBinding($"<XRController>{handTag}/triggerPressed");
             _triggerAction.AddBinding($"<XRController>{{{handSide}}}/trigger");
+            _triggerAction.AddBinding($"<XRController>{{{handSide}}}/triggerPressed");
+            _triggerAction.AddBinding($"<{handPrefix}HandXRController>/trigger");
+            _triggerAction.AddBinding($"<{handPrefix}HandXRController>/triggerPressed");
 
             // Actions Pose (Grip & Pointer)
             _posAction = new InputAction("Position", InputActionType.Value, expectedControlType: "Vector3");
             _posAction.AddBinding($"<XRController>{handTag}/devicePosition");
+            _posAction.AddBinding($"<XRController>{{{handSide}}}/devicePosition");
+            _posAction.AddBinding($"<{handPrefix}HandXRController>/devicePosition");
 
             _rotAction = new InputAction("Rotation", InputActionType.Value, expectedControlType: "Quaternion");
             _rotAction.AddBinding($"<XRController>{handTag}/deviceRotation");
+            _rotAction.AddBinding($"<XRController>{{{handSide}}}/deviceRotation");
+            _rotAction.AddBinding($"<{handPrefix}HandXRController>/deviceRotation");
 
             _posPointerAction = new InputAction("PointerPosition", InputActionType.Value, expectedControlType: "Vector3");
             _posPointerAction.AddBinding($"<XRController>{handTag}/pointerPosition");
+            _posPointerAction.AddBinding($"<XRController>{{{handSide}}}/pointerPosition");
+            _posPointerAction.AddBinding($"<{handPrefix}HandXRController>/pointerPosition");
 
             _rotPointerAction = new InputAction("PointerRotation", InputActionType.Value, expectedControlType: "Quaternion");
             _rotPointerAction.AddBinding($"<XRController>{handTag}/pointerRotation");
+            _rotPointerAction.AddBinding($"<XRController>{{{handSide}}}/pointerRotation");
+            _rotPointerAction.AddBinding($"<{handPrefix}HandXRController>/pointerRotation");
         }
 
         private void OnEnable()
@@ -159,6 +180,12 @@ namespace RemodelerLeReel.VR
                     transform.localRotation = rot;
                 }
             }
+#if UNITY_EDITOR
+            else
+            {
+                HandleEditorSimulation();
+            }
+#endif
         }
 
         private bool TryGetPoseFromNodeStates(out Vector3 pos, out Quaternion rot)
@@ -353,6 +380,19 @@ namespace RemodelerLeReel.VR
                 if (trigBtn != null && trigBtn.isPressed) return true;
             }
 
+#if UNITY_EDITOR
+            if (!XRSettings.isDeviceActive)
+            {
+                if (Mouse.current != null)
+                {
+                    bool isRight = handNode == XRNode.RightHand;
+                    if (isRight && Mouse.current.rightButton.isPressed) return true;
+                    if (!isRight && Mouse.current.leftButton.isPressed) return true;
+                }
+                if (Keyboard.current != null && Keyboard.current.spaceKey.isPressed) return true;
+            }
+#endif
+
             return false;
         }
 
@@ -424,13 +464,36 @@ namespace RemodelerLeReel.VR
                 foreach (var av in _angularVelocitySamples) avgAngVel += av;
                 if (_angularVelocitySamples.Count > 0) avgAngVel /= _angularVelocitySamples.Count;
 
+#if UNITY_6000_0_OR_NEWER
                 _grabbedBody.linearVelocity = avgVel * throwForceMultiplier;
+#else
+                _grabbedBody.velocity = avgVel * throwForceMultiplier;
+#endif
                 _grabbedBody.angularVelocity = avgAngVel;
             }
 
             _grabbedBody = null;
             _originalParent = null;
         }
+
+#if UNITY_EDITOR
+        private void HandleEditorSimulation()
+        {
+            // Fallback Éditeur : si aucun casque XR physique n'est branché,
+            // positionner la manette de façon ergonomique devant la caméra
+            if (!XRSettings.isDeviceActive)
+            {
+                var cam = Camera.main;
+                if (cam != null)
+                {
+                    float side = (handNode == XRNode.LeftHand) ? -0.22f : 0.22f;
+                    Vector3 defaultOffset = new Vector3(side, -0.15f, 0.45f);
+                    transform.position = cam.transform.position + cam.transform.TransformDirection(defaultOffset);
+                    transform.rotation = cam.transform.rotation;
+                }
+            }
+        }
+#endif
 
         private static bool DeviceMatchesHand(UnityEngine.InputSystem.InputDevice dev, bool isLeft)
         {

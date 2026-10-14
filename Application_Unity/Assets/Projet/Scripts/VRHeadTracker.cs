@@ -19,6 +19,8 @@ namespace RemodelerLeReel.VR
 
         private void Awake()
         {
+            EnsureXRStarted();
+
             _posAction = new InputAction("HeadPosition", InputActionType.Value, expectedControlType: "Vector3");
             _posAction.AddBinding("<XRHMD>/centerEyePosition");
             _posAction.AddBinding("<XRHMD>/devicePosition");
@@ -26,6 +28,29 @@ namespace RemodelerLeReel.VR
             _rotAction = new InputAction("HeadRotation", InputActionType.Value, expectedControlType: "Quaternion");
             _rotAction.AddBinding("<XRHMD>/centerEyeRotation");
             _rotAction.AddBinding("<XRHMD>/deviceRotation");
+        }
+
+        private void EnsureXRStarted()
+        {
+            try
+            {
+                var xrGeneral = UnityEngine.XR.Management.XRGeneralSettings.Instance;
+                if (xrGeneral != null && xrGeneral.Manager != null)
+                {
+                    if (!xrGeneral.Manager.isInitializationComplete)
+                    {
+                        xrGeneral.Manager.InitializeLoaderSync();
+                    }
+                    if (xrGeneral.Manager.activeLoader != null)
+                    {
+                        xrGeneral.Manager.StartSubsystems();
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning("[VRHeadTracker] Note initialisation XR: " + ex.Message);
+            }
         }
 
         private void OnEnable()
