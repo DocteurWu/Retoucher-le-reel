@@ -399,8 +399,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 441774522}
-  - component: {fileID: 441774524}
-  - component: {fileID: 441774523}
   m_Layer: 0
   m_Name: XR Origin (VR)
   m_TagString: Untagged
@@ -424,53 +422,6 @@ Transform:
   - {fileID: 878469668}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &441774523
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 441774521}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 063be9c0032b3f8429156e4c1ea2b525, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::RemodelerLeReel.VR.VRSnapTurn
-  xrOriginTransform: {fileID: 0}
-  headCamera: {fileID: 0}
-  handNode: 5
-  turnAngle: 45
-  activationThreshold: 0.6
-  resetThreshold: 0.2
---- !u!114 &441774524
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 441774521}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f41af76354ac45747a6400272e7964bc, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::RemodelerLeReel.VR.VRTeleportation
-  rayOrigin: {fileID: 0}
-  headCamera: {fileID: 0}
-  xrOriginTransform: {fileID: 0}
-  handNode: 4
-  activationThreshold: 0.5
-  releaseThreshold: 0.2
-  initialVelocity: 9
-  maxArcPoints: 35
-  timeStep: 0.04
-  teleportLayerMask:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  maxSurfaceSlopeAngle: 45
-  arcRenderer: {fileID: 0}
-  reticleTransform: {fileID: 0}
-  validArcColor: {r: 0.1, g: 0.8, b: 1, a: 0.8}
-  invalidArcColor: {r: 1, g: 0.2, b: 0.2, a: 0.4}
 --- !u!1 &480102125
 GameObject:
   m_ObjectHideFlags: 0
@@ -484,7 +435,6 @@ GameObject:
   - component: {fileID: 480102129}
   - component: {fileID: 480102128}
   - component: {fileID: 480102127}
-  - component: {fileID: 480102126}
   m_Layer: 0
   m_Name: Cylindre_Attrapable
   m_TagString: Untagged
@@ -492,19 +442,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &480102126
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 480102125}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8aa2da19649f9f545b0f9a12f63923af, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::RemodelerLeReel.VR.VRThrowableRespawn
-  minHeightBeforeRespawn: -2
 --- !u!54 &480102127
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -528,7 +465,7 @@ Rigidbody:
   m_ImplicitCom: 1
   m_ImplicitTensor: 1
   m_UseGravity: 1
-  m_IsKinematic: 0
+  m_IsKinematic: 1
   m_Interpolate: 1
   m_Constraints: 0
   m_CollisionDetection: 2
@@ -621,7 +558,7 @@ Transform:
   m_GameObject: {fileID: 480102125}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1.08, z: 0.85}
+  m_LocalPosition: {x: 0, y: 1.06, z: 0.85}
   m_LocalScale: {x: 0.12, y: 0.16, z: 0.12}
   m_ConstrainProportionsScale: 0
   m_Children: []
