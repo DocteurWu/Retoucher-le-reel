@@ -1,6 +1,6 @@
 # Module Unity — Application Réalité Virtuelle
 
-Application interactive en Réalité Virtuelle développée sous **Unity 6000.6.2f1** avec le pipeline **Universal Render Pipeline (URP 17.6.0)**.
+Application interactive en Réalité Virtuelle développée sous **Unity 6000.0.84f1** avec le pipeline **Universal Render Pipeline (URP 17.6.0)**.
 Matériel ciblé : **Meta Quest 2/3**  
 
 ---
@@ -9,7 +9,7 @@ Matériel ciblé : **Meta Quest 2/3**
 
 Pour garantir la compatibilité absolue entre tous les membres de l'équipe :
 
-- **Unity Hub** avec la version précise **Unity 6000.6.2f1** (cf. `ProjectSettings/ProjectVersion.txt`).
+- **Unity Hub** avec la version précise **Unity 6000.0.84f1** (cf. `ProjectSettings/ProjectVersion.txt`).
 
 ---
 
