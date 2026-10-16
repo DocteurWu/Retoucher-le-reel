@@ -10,6 +10,10 @@
 **/[Uu]ser[Ss]ettings/
 **/[Mm]emoryCaptures/
 
+# MCP Unity (package embarque, usage local uniquement - ne doit jamais apparaitre sur GitHub)
+Application_Unity/Packages/com.coplaydev.unity-mcp/
+Application_Unity/Packages/packages-lock.json
+
 # Fichiers autogeneres Unity et IDEs
 *.csproj
 *.unityproj

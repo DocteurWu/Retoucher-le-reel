@@ -393,6 +393,8 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 441774522}
+  - component: {fileID: 441774524}
+  - component: {fileID: 441774523}
   m_Layer: 0
   m_Name: XR Origin (VR)
   m_TagString: Untagged
@@ -416,6 +418,53 @@ Transform:
   - {fileID: 878469668}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &441774523
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 441774521}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f41af76354ac45747a6400272e7964bc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  rayOrigin: {fileID: 333109808}
+  headCamera: {fileID: 1197196570}
+  xrOriginTransform: {fileID: 441774522}
+  handNode: 4
+  activationThreshold: 0.5
+  releaseThreshold: 0.2
+  initialVelocity: 9
+  maxArcPoints: 35
+  timeStep: 0.04
+  teleportLayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  maxSurfaceSlopeAngle: 45
+  arcRenderer: {fileID: 0}
+  reticleTransform: {fileID: 0}
+  validArcColor: {r: 0.1, g: 0.8, b: 1, a: 0.8}
+  invalidArcColor: {r: 1, g: 0.2, b: 0.2, a: 0.4}
+--- !u!114 &441774524
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 441774521}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 063be9c0032b3f8429156e4c1ea2b525, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  xrOriginTransform: {fileID: 441774522}
+  headCamera: {fileID: 1197196570}
+  handNode: 5
+  turnAngle: 45
+  activationThreshold: 0.6
+  resetThreshold: 0.2
 --- !u!1 &480102125
 GameObject:
   m_ObjectHideFlags: 0
@@ -426,9 +475,11 @@ GameObject:
   m_Component:
   - component: {fileID: 480102131}
   - component: {fileID: 480102130}
-  - component: {fileID: 480102129}
   - component: {fileID: 480102128}
   - component: {fileID: 480102127}
+  - component: {fileID: 480102133}
+  - component: {fileID: 480102134}
+  - component: {fileID: 480102135}
   m_Layer: 0
   m_Name: Cylindre_Attrapable
   m_TagString: Untagged
@@ -459,7 +510,7 @@ Rigidbody:
   m_ImplicitCom: 1
   m_ImplicitTensor: 1
   m_UseGravity: 1
-  m_IsKinematic: 1
+  m_IsKinematic: 0
   m_Interpolate: 1
   m_Constraints: 0
   m_CollisionDetection: 2
@@ -508,29 +559,6 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!136 &480102129
-CapsuleCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 480102125}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 2
-  m_Radius: 0.5
-  m_Height: 2
-  m_Direction: 1
-  m_Center: {x: 0, y: 0, z: 0}
 --- !u!33 &480102130
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -548,12 +576,65 @@ Transform:
   m_GameObject: {fileID: 480102125}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1.06, z: 0.85}
+  m_LocalPosition: {x: 0, y: 1.07, z: 0.85}
   m_LocalScale: {x: 0.12, y: 0.16, z: 0.12}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &480102133
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 480102125}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 215750a184792584aa267359b0aee354, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  scalingEnabled: 1
+  minSizeRatio: 0.25
+  maxSizeRatio: 3
+  minWorldSize: 0.02
+  maxWorldSize: 20
+  scaleRigidbodyMass: 0
+  body: {fileID: 480102127}
+--- !u!65 &480102134
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 480102125}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1, y: 2, z: 1}
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &480102135
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 480102125}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8aa2da19649f9f545b0f9a12f63923af, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  minHeightBeforeRespawn: -2
 --- !u!1 &806618028
 GameObject:
   m_ObjectHideFlags: 0
@@ -565,7 +646,7 @@ GameObject:
   - component: {fileID: 806618030}
   - component: {fileID: 806618029}
   m_Layer: 0
-  m_Name: f
+  m_Name: Gaussian TEST
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1869,6 +1950,7 @@ GameObject:
   - component: {fileID: 1703865559}
   - component: {fileID: 1703865561}
   - component: {fileID: 1703865560}
+  - component: {fileID: 1703865563}
   m_Layer: 0
   m_Name: Right Controller
   m_TagString: Untagged
@@ -1928,6 +2010,37 @@ SphereCollider:
   serializedVersion: 3
   m_Radius: 0.18
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &1703865563
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1703865558}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 15ee302a2f1018f41a9254675672c5ac, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  mode: 2
+  handNode: 5
+  stickSensitivity: 1.5
+  invertStick: 0
+  pinchSmoothing: 10
+  pinchPressThreshold: 0.5
+  minPinchDistance: 0.03
+  defaultMinRatio: 0.25
+  defaultMaxRatio: 4
+  scaleAudio: {fileID: 0}
+  introClip: {fileID: 8300000, guid: cd4b8cc8b9dbec54496b7fbd66694deb, type: 3}
+  loopClip: {fileID: 8300000, guid: 4c8423984328365468aeb0b4c71ad185, type: 3}
+  autoLoopDelay: 1
+  loopDelay: 4
+  scaleVolume: 1
+  fadeOutDuration: 0.15
+  spatialBlend: 1
+  minDistance: 1
+  maxDistance: 20
 --- !u!1 &1726903416
 GameObject:
   m_ObjectHideFlags: 0
