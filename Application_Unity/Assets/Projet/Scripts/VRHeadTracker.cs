@@ -1,3 +1,21 @@
+// =====================================================================================
+//  VRHeadTracker.cs — POSE DE LA TÊTE (casque)
+//
+//  RÔLE
+//    Écrit, à chaque frame, la pose réelle du casque dans le Transform de la
+//    caméra (en LOCAL, car la caméra est enfant de l'XR Origin que la
+//    locomotion, la téléportation et le snap turn déplacent / font tourner).
+//    Demande aussi au sous-système XR le mode d'origine « Floor » (y = 0 au sol),
+//    sans lequel la hauteur du joueur est fausse.
+//
+//  À POSER SUR : la Main Camera (et câbler le sous-système XR si l'éiteur le
+//  demande : le script démarre lui-même la pile XR s'il faut).
+//
+//  ⚠️ 4 niveaux de lecture de la pose (XRNodeStates → Input System → ancienne
+//     API XR → Input Actions) : le premier qui répond gagne.
+//
+//  RÉFÉRENCES : voir README.md (sections 2 et 6)
+// =====================================================================================
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;

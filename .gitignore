@@ -107,3 +107,28 @@ Desktop.ini
 *.code-workspace
 node_modules/
 *.log
+
+# ==============================================================================
+# Donnees brutes volumineuses : ne JAMAIS committer en masse
+# (evite les commits accidentels de captures et nuages de points)
+# ==============================================================================
+# Frames de capture brutes (extraction multi-cams, tres volumineuses et regenerables)
+Traitement_Gaussian_SAGA/Donnees_Brutes/**/images/frame_*_cam*.jpg
+Traitement_Gaussian_SAGA/Donnees_Brutes/**/images/frame_*_cam*.png
+# Archives de capture brutes
+Traitement_Gaussian_SAGA/Donnees_Brutes/**/*.tar.gz
+# Nuages de points / captations gaussiennes (les exports ponctuels restent
+# ajoutables via " git add -f ")
+*.ply
+Application_Unity/Assets/Projet/Art_Graphismes/GaussianSplats/Captures/
+# ⚠️ NE PAS ignorer Application_Unity/Assets/Projet/Scenes_Niveaux/Gaussian/ :
+# ce dossier contient les DONNEES des splats (asset + .bytes) utilisees par
+# les scenes (dont le « Ancien PLY ForgeHaute » du menu). Les .bytes sont
+# versionnes via Git LFS (cf. .gitattributes). Les exports .ply restent
+# ignores par la regle "*.ply" ci-dessus.
+
+# Dossiers temporaires Unity / IDE (tous niveaux)
+**/.utmp/
+Application_Unity/.vscode/
+Application_Unity/Assets/Plugins/
+Application_Unity/Assets/Plugins.meta

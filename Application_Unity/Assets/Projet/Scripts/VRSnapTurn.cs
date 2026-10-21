@@ -1,3 +1,26 @@
+// =====================================================================================
+//  VRSnapTurn.cs — ROTATION PAR CRANS (SNAP TURN)
+//
+//  RÔLE
+//    Pousser le stick droit à gauche/droite fait pivoter l'XR ORIGIN de 45°
+//    autour de la tête du joueur (le joueur ne se déplace pas, c'est son point
+//    de vue qui tourne : c'est le geste le moins nauséeux en VR).
+//
+//  À POSER SUR : l'XR Origin. Câbler xrOriginTransform et headCamera.
+//
+//  ⚠️ HYSTÉRÉSIS (anti-répétition)
+//    activationThreshold (0,6) déclenche un cran, resetThreshold (0,2) autorise
+//    le suivant : sans cette zone morte, le cran se rejouerait des dizaines de
+//    fois par seconde.
+//
+//  ⚠️ Le snap turn est DÉSACTIVÉ tant qu'un objet est tenu (VRScaleGrab
+//     utilise le stick droit) ou que le verrou d'échelle est armé.
+//
+//  Comportement assumé (standard XRI) : l'XR Origin tourne, donc les manettes
+//  virtuelles tournent avec le monde et s'écartent de la manette physique.
+//
+//  RÉFÉRENCES : voir README.md (sections 3 et 4)
+// =====================================================================================
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -78,6 +101,9 @@ namespace RemodelerLeReel.VR
         /// <summary>Action de secours pour lire le joystick (3e niveau de secours).</summary>
         private InputAction _thumbstickAction;
 
+        /// <summary>Liste de périphériques réutilisée (évite une allocation par frame).</summary>
+        private readonly List<XRInputDevice> _deviceBuffer = new List<XRInputDevice>(4);
+
         // =====================================================================
         // INITIALISATION
         // =====================================================================
@@ -134,6 +160,17 @@ namespace RemodelerLeReel.VR
         /// </summary>
         private void Update()
         {
+            // Si le stick de cette main est réquisitionné par l'échelle
+            // (poignée de la main libre serrée), on s'efface : le joueur est
+            // en train de redimensionner un objet, pas de tourner.
+            // Quand un objet est saisi (grab), le stick droit est réservé au scale !
+            // SnapTurn s\'efface pour ne pas faire tourner la vue pendant le scale.
+            if (VRGrabHand.AnyHandGrabbing() || VRScaleGrab.IsScalingActive || VRInputLock.IsStickReserved(handNode))
+            {
+                _canTurn = true;
+                return;
+            }
+
             float axisX = ReadThumbstickX();
 
             if (_canTurn)
@@ -179,13 +216,13 @@ namespace RemodelerLeReel.VR
             // correspondant par caractéristiques (main gauche / droite).
             if (!device.isValid)
             {
-                var inputDevices = new List<XRInputDevice>();
+                _deviceBuffer.Clear();
                 InputDeviceCharacteristics characteristics = InputDeviceCharacteristics.Controller |
                     (handNode == XRNode.LeftHand ? InputDeviceCharacteristics.Left : InputDeviceCharacteristics.Right);
-                InputDevices.GetDevicesWithCharacteristics(characteristics, inputDevices);
-                if (inputDevices.Count > 0)
+                InputDevices.GetDevicesWithCharacteristics(characteristics, _deviceBuffer);
+                if (_deviceBuffer.Count > 0)
                 {
-                    device = inputDevices[0];
+                    device = _deviceBuffer[0];
                 }
             }
 
@@ -217,8 +254,8 @@ namespace RemodelerLeReel.VR
                 if (!isTarget) continue;
 
                 // thumbstick (Quest) en priorité, primary2DAxis en secours.
-                var stick = dev.GetChildControl<UnityEngine.InputSystem.Controls.Vector2Control>("thumbstick") ??
-                            dev.GetChildControl<UnityEngine.InputSystem.Controls.Vector2Control>("primary2DAxis");
+                var stick = VRInputControls.FindAny<UnityEngine.InputSystem.Controls.Vector2Control>(
+                    dev, "thumbstick", "primary2DAxis", "stick");
                 if (stick != null)
                 {
                     Vector2 v = stick.ReadValue();
@@ -227,12 +264,15 @@ namespace RemodelerLeReel.VR
             }
 
             // Fallback Clavier (Q / D ou Flèches gauche / droite) : pour tester
-            // dans l'éditeur sans casque branché.
-            if (Keyboard.current != null)
+            // dans l'éditeur sans casque branché. Gate identique aux autres scripts :
+            // en VR, le clavier doit être ignoré pour ne pas perturber le jeu.
+#if UNITY_EDITOR
+            if (VRDeviceState.EditorFallbackAllowed && Keyboard.current != null)
             {
                 if (Keyboard.current.leftArrowKey.isPressed || Keyboard.current.qKey.isPressed) return -1f;
                 if (Keyboard.current.rightArrowKey.isPressed || Keyboard.current.dKey.isPressed) return 1f;
             }
+#endif
 
             // Aucun joystick détecté → neutre.
             return 0f;

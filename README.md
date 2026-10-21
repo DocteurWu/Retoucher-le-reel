@@ -50,8 +50,8 @@ git pull
 ### 2. Vous travaillez sur Unity (VR)
 - Ouvrez **Unity Hub**.
 - Cliquez sur **Add** (Ajouter) et sélectionnez le dossier **`Application_Unity`** (pas la racine du repo car ya l'autre partie aussi ... ).
-- Version requise : **Unity 6000.6.2f1** (avec le module Android (pas XR) si vous voulez build sur le Quest).
-- Ouvrez la scène de test dans `Assets/Projet/Scenes_Niveaux/Sandbox_VR_Basique.unity` et appuyez sur Play ! (PC avec un bon GPU)
+- Version requise : **Unity 6000.0.84f1** (avec le module Android (pas XR) si vous voulez build sur le Quest).
+- Ouvrez la scène `Assets/Projet/Scenes_Niveaux/Menu.unity` et appuyez sur Play (le bouton *Jouer* charge `Scene.de.base1.unity`, la scène de jeu). PC avec un bon GPU, ou build sur Quest.
 
 ### 3. Vous travaillez sur le Gaussian Splatting & SAGA (Python)
 - Allez dans `Traitement_Gaussian_SAGA/`.
@@ -65,3 +65,4 @@ git pull
 ---
 
 - **Fichiers ignorés** : les dossiers de cache générés par Unity (`Library/`, `Temp/`, `.csproj`) et par Python (`__pycache__/`, `venv/`) sont automatiquement ignorés par le `.gitignore`.
+- **Git LFS** : `.fbx`, `.blend`, `.ply`, `.bytes` (données des splats), `.mp3`, `.ogg`, images → **toujours versionnés via LFS**. Les `.ply` bruts sont eux ignorés (régénérables).

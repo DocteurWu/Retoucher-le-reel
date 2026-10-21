@@ -1,3 +1,31 @@
+// =====================================================================================
+//  VRGrabHand.cs — MANETTE : SUIVI 6-DOF + SAISIE + LANCER
+//
+//  RÔLE (3 choses sur le GameObject de la manette)
+//    1. SUIVI : écrit la pose réelle de la manette dans son Transform (local).
+//    2. SAISIE : une sphère de grabRadius (18 cm) entoure la main ; à l'appui
+//       du grip ou du trigger, l'objet le plus proche est parenté à la main,
+//       devient cinématique et perd la gravité (il ne tombe plus en main).
+//    3. LANCER : au relâchement, l'objet repart avec la MOYENNE des 8 dernières
+//       vitesses de la main (on peut donc lancer en remuant le poignet).
+//
+//  À POSER SUR : chaque manette (Left Controller / Right Controller).
+//  Parameters : handNode (LeftHand/RightHand), grabRadius, throwForceMultiplier,
+//               snapToHandOnGrab, gripOffset.
+//
+//  ⚠️ RÈGLES IMPORTANTES
+//    - Physics.SyncTransforms() après le parentage : le projet a
+//      autoSyncTransforms = 0, sans quoi le collider de l'objet reste en retard.
+//    - Au relâchement, écrire la pose sur le RIGIDBODY (position/rotation)
+//      avant de le repasser en dynamique, sinon la physique réimpose son
+//      ancienne pose et l'objet « revient en arrière ».
+//    - Un objet déjà tenu par l'autre main est EXCLU du classement (sinon la
+//      main ne pouvait plus rien attraper).
+//    - Ordre d'exécution : 0 (après VRScaleGrab en −50, qui arme le verrou
+//      d'entrée que ce script doit voir dans la MÊME frame).
+//
+//  RÉFÉRENCES : voir README.md (sections 3, 4 et 6)
+// =====================================================================================
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -32,6 +60,16 @@ namespace RemodelerLeReel.VR
     /// Compatible Quest 3 standalone (OpenXR) et PCVR grâce aux 4 niveaux de
     /// lecture du suivi et du bouton.
     /// </summary>
+    /// <remarks>
+    /// ORDRE D'EXÉCUTION : ce composant garde l'ordre par défaut (0), donc il
+    /// s'exécute APRÈS VRScaleGrab (-50). C'est indispensable : c'est
+    /// VRScaleGrab qui arme le verrou d'entrée, et la saisie doit voir ce
+    /// verrou dans la MÊME frame pour interdire à la main libre de voler
+    /// l'objet en cours de redimensionnement.
+    /// En revanche VRDuplicateDelete (+10) s'exécute après ce script, ce qui
+    /// lui permet de dupliquer/supprimer l'objet venant d'être saisi dans la
+    /// même frame.
+    /// </remarks>
     [RequireComponent(typeof(SphereCollider))]
     [AddComponentMenu("Remodeler le Reel/VR/VR Grab Hand (Contrôleur et Saisie)")]
     public class VRGrabHand : MonoBehaviour
@@ -124,6 +162,49 @@ namespace RemodelerLeReel.VR
         /// descendant) — un maintien ne doit grabber qu'une seule fois.
         /// </summary>
         private bool _wasGrabPressed;
+
+        /// <summary>
+        /// Objet actuellement tenu par cette main (null si la main est vide). Exposé en
+        /// lecture seule pour les composants frères qui travaillent sur l'objet saisi
+        /// (ex. <see cref="VRDuplicateDelete"/>).
+        /// </summary>
+        public Rigidbody GrabbedBody => _grabbedBody;
+
+        /// <summary>
+        /// Parent d'origine de l'objet tenu, mémorisé au moment de la saisie (null si
+        /// aucun objet n'est tenu). Permet à un autre composant de replacer ou de
+        /// dupliquer l'objet dans la bonne partie de la hiérarchie, plutôt qu'à la
+        /// racine de la scène.
+        /// </summary>
+        public Transform GrabbedOriginalParent => _originalParent;
+
+        /// <summary>Liste active de toutes les mains VRGrabHand enregistrees.</summary>
+        public static readonly List<VRGrabHand> AllHands = new List<VRGrabHand>(2);
+
+        /// <summary>Vrai si au moins une main tient un objet.</summary>
+        public static bool AnyHandGrabbing()
+        {
+            for (int i = 0; i < AllHands.Count; i++)
+            {
+                if (AllHands[i] != null && AllHands[i]._grabbedBody != null) return true;
+            }
+            return false;
+        }
+
+        /// <summary>Retourne le Rigidbody tenu par l'une des mains (null si rien n'est tenu).</summary>
+        public static Rigidbody GetAnyGrabbedBody(out VRGrabHand holdingHand)
+        {
+            for (int i = 0; i < AllHands.Count; i++)
+            {
+                if (AllHands[i] != null && AllHands[i]._grabbedBody != null)
+                {
+                    holdingHand = AllHands[i];
+                    return AllHands[i]._grabbedBody;
+                }
+            }
+            holdingHand = null;
+            return null;
+        }
 
         // --- Historique des vitesses (pour le lancer) -------------------------
 
@@ -261,6 +342,7 @@ namespace RemodelerLeReel.VR
 
             _lastWorldPos = transform.position;
             _lastWorldRot = transform.rotation;
+            if (!AllHands.Contains(this)) AllHands.Add(this);
         }
 
         /// <summary>
@@ -271,6 +353,7 @@ namespace RemodelerLeReel.VR
         private void OnDisable()
         {
             Application.onBeforeRender -= OnBeforeRenderHand;
+            AllHands.Remove(this);
 
             if (_grabbedBody != null)
             {
@@ -314,12 +397,23 @@ namespace RemodelerLeReel.VR
 
             bool isPressed = IsGrabPressed();
 
-            // FRONT MONTANT : le bouton vient d'être enfoncé → on attrape.
-            if (isPressed && !_wasGrabPressed)
+            // ARBITRAGE : si le joueur est en train de redimensionner un objet
+            // (poignée de la main libre serrée), cette main ne doit PAS
+            // pouvoir attraper. Sans ce garde-fou, la main qui sert à
+            // pincer l'échelle vole l'objet qu'on est en train de mettre à
+            // l'échelle, et le geste devient impossible à réaliser.
+            // Une main qui tient DÉJÀ un objet n'est pas affectée : le
+            // relâchement doit rester possible à tout moment.
+            bool canGrab = !VRInputLock.GrabSuppressed || _grabbedBody != null;
+
+            // FRONT MONTANT : appui -> on attrape si main libre.
+            if (isPressed && !_wasGrabPressed && canGrab)
             {
-                TryGrabClosestObject();
+                if (_grabbedBody == null) TryGrabClosestObject();
             }
             // FRONT DESCENDANT : le bouton vient d'être relâché → on lance.
+            // Toujours autorisé, même en mode échelle : sinon on ne pourrait
+            // jamais se débarrasser d'un objet.
             else if (!isPressed && _wasGrabPressed)
             {
                 if (_grabbedBody != null)
@@ -432,10 +526,13 @@ namespace RemodelerLeReel.VR
                 // On ne regarde que le périphérique de la bonne main.
                 if (!DeviceMatchesHand(dev, isLeft)) continue;
 
-                var posControl = dev.GetChildControl<UnityEngine.InputSystem.Controls.Vector3Control>("devicePosition") ??
-                                 dev.GetChildControl<UnityEngine.InputSystem.Controls.Vector3Control>("pointerPosition");
-                var rotControl = dev.GetChildControl<UnityEngine.InputSystem.Controls.QuaternionControl>("deviceRotation") ??
-                                 dev.GetChildControl<UnityEngine.InputSystem.Controls.QuaternionControl>("pointerRotation");
+                // ⚠️ Lecteur SÛR : GetChildControl lèverait une exception sur
+                // les périphériques qui n'ont pas « devicePosition » (le casque,
+                // certains claviers…), ce qui interrompait le suivi de la main.
+                var posControl = VRInputControls.FindAny<UnityEngine.InputSystem.Controls.Vector3Control>(
+                    dev, "devicePosition", "pointerPosition", "position", "centerEyePosition");
+                var rotControl = VRInputControls.FindAny<UnityEngine.InputSystem.Controls.QuaternionControl>(
+                    dev, "deviceRotation", "pointerRotation", "rotation", "centerEyeRotation");
 
                 if (posControl != null)
                 {
@@ -613,23 +710,26 @@ namespace RemodelerLeReel.VR
                 var dev = devices[i];
                 if (!DeviceMatchesHand(dev, isLeft)) continue;
 
-                var gripControl = dev.GetChildControl<UnityEngine.InputSystem.Controls.AxisControl>("grip");
+                var gripControl = VRInputControls.Find<UnityEngine.InputSystem.Controls.AxisControl>(dev, "grip");
                 if (gripControl != null && gripControl.ReadValue() > 0.5f) return true;
 
-                var triggerControl = dev.GetChildControl<UnityEngine.InputSystem.Controls.AxisControl>("trigger");
+                var triggerControl = VRInputControls.Find<UnityEngine.InputSystem.Controls.AxisControl>(dev, "trigger");
                 if (triggerControl != null && triggerControl.ReadValue() > 0.5f) return true;
 
-                var gripBtn = dev.GetChildControl<UnityEngine.InputSystem.Controls.ButtonControl>("gripPressed");
+                var gripBtn = VRInputControls.Find<UnityEngine.InputSystem.Controls.ButtonControl>(dev, "gripPressed");
                 if (gripBtn != null && gripBtn.isPressed) return true;
 
-                var trigBtn = dev.GetChildControl<UnityEngine.InputSystem.Controls.ButtonControl>("triggerPressed");
+                var trigBtn = VRInputControls.Find<UnityEngine.InputSystem.Controls.ButtonControl>(dev, "triggerPressed");
                 if (trigBtn != null && trigBtn.isPressed) return true;
             }
 
 #if UNITY_EDITOR
             // Simulation pour l'éditeur : souris (bouton droit = main droite,
-            // gauche = main gauche) ou Espace. Uniquement si aucun casque n'est actif.
-            if (!XRSettings.isDeviceActive)
+            // gauche = main gauche). Uniquement si aucun casque n'est actif.
+            // ⚠️ ESPACE n'est PLUS utilisé ici : il servait de bouton de saisie
+            // pour les DEUX mains, et c'est aussi le bouton A (saut) : le
+            // joueur sautait à chaque fois qu'il essayait d'attraper un objet.
+            if (VRDeviceState.EditorFallbackAllowed)
             {
                 if (Mouse.current != null)
                 {
@@ -637,7 +737,6 @@ namespace RemodelerLeReel.VR
                     if (isRight && Mouse.current.rightButton.isPressed) return true;
                     if (!isRight && Mouse.current.leftButton.isPressed) return true;
                 }
-                if (Keyboard.current != null && Keyboard.current.spaceKey.isPressed) return true;
             }
 #endif
 
@@ -656,6 +755,12 @@ namespace RemodelerLeReel.VR
         /// point le plus proche est le plus proche de la main.
         /// On compare des distances AU CARRÉ (sqrMagnitude) : pas de racine carrée
         /// inutile, c'est une optimisation classique sur du code exécuté à chaque frame.
+        ///
+        /// ⚠️ Les objets DÉJÀ TENUS par une autre main sont EXCLUS du classement
+        /// (et non plus un motif d'abandon de la saisie). Avant, si l'objet
+        /// tenu par l'autre main passait dans la sphère de préhension, la
+        /// main abandonnait TOUTE sa saisie : elle ne pouvait plus rien
+        /// attraper tant que l'autre main tenait son objet.
         /// </summary>
         private Rigidbody FindClosestGrabbable()
         {
@@ -671,6 +776,10 @@ namespace RemodelerLeReel.VR
                 Rigidbody rb = col.attachedRigidbody; // Ignorer les colliders sans corps physique.
                 if (rb == null) continue;
 
+                // Déjà tenu par une main : on l'ignore et on continue à
+                // chercher un autre objet attrapable.
+                if (IsHeldByAnyHand(rb)) continue;
+
                 float distSq = (col.ClosestPoint(transform.position) - transform.position).sqrMagnitude;
                 if (distSq < bestDistSq)
                 {
@@ -683,12 +792,28 @@ namespace RemodelerLeReel.VR
         }
 
         /// <summary>
+        /// L'objet est-il déjà tenu par l'une des mains ? (Un objet ne peut pas
+        /// être dans deux mains à la fois.)
+        /// </summary>
+        private static bool IsHeldByAnyHand(Rigidbody body)
+        {
+            if (body == null) return false;
+
+            for (int i = 0; i < AllHands.Count; i++)
+            {
+                VRGrabHand hand = AllHands[i];
+                if (hand != null && hand._grabbedBody == body) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Attrape l'objet le plus proche et l'attache à la main.
         ///
         /// Étapes :
         ///  1. Rien à portée de main → on sort.
-        ///  2. Si l'objet est déjà tenu par l'AUTRE main, on l'en détache d'abord
-        ///     (sans vitesse de lancer) : un objet ne peut pas être dans deux mains.
+        ///  2. Les objets déjà tenus par l'autre main sont ignorés (ils ne sont
+        ///     plus dans le classement : voir FindClosestGrabbable).
         ///  3. On mémorise le parent d'origine (pour pouvoir le restaurer).
         ///  4. On rend le Rigidbody CINÉMATIQUE et on coupe la gravité : l'objet
         ///     ne tombe plus pendant qu'il est en main.
@@ -697,19 +822,20 @@ namespace RemodelerLeReel.VR
         ///  6. On vide l'historique de vitesses : le lancer ne doit pas prendre en
         ///     compte les frames précédant la saisie.
         /// </summary>
-        private void TryGrabClosestObject()
+private void TryGrabClosestObject()
         {
             Rigidbody target = FindClosestGrabbable();
             if (target == null) return;
 
-            VRGrabHand[] allHands = FindObjectsByType<VRGrabHand>(FindObjectsSortMode.None);
-            foreach (var otherHand in allHands)
+            // TRANSFERT INTERDIT : on ne vole pas un objet déjà tenu par l'autre
+            // main. Le transfert automatique entrait en conflit direct avec le
+            // pincement à deux mains (la main libre réquisitionnait l'objet au
+            // lieu de le redimensionner) et supprimait tout contrôle individuel
+            // sur l'objet. Pour changer de main : on lâche d'abord, puis on
+            // saisit avec l'autre main.
+            if (IsHeldByAnyHand(target))
             {
-                if (otherHand != this && otherHand._grabbedBody == target)
-                {
-                    // applyThrowVelocity: false → pas de projection de l'objet.
-                    otherHand.ReleaseObject(applyThrowVelocity: false);
-                }
+                return;
             }
 
             _grabbedBody = target;
@@ -736,6 +862,13 @@ namespace RemodelerLeReel.VR
                 _grabbedBody.transform.localRotation = Quaternion.identity;
             }
 
+            // ⚠️ SYNC PHYSIQUE : le projet a « Physics.autoSyncTransforms = 0 ».
+            // Sans cet appel, le COLLIDER de l'objet saisi reste sur sa
+            // ancienne position pendant une frame (ou plus) : l'objet
+            // « colle » visuellement mais ne pousse rien, et se fait
+            // pousser. On synchronise donc immédiatement.
+            Physics.SyncTransforms();
+
             _velocitySamples.Clear();
             _angularVelocitySamples.Clear();
         }
@@ -752,10 +885,25 @@ namespace RemodelerLeReel.VR
         {
             if (_grabbedBody == null) return;
 
+            // ⚠️ AVANT DE REDEVENIR DYNAMIQUE : on fige la pose de l'objet là
+            // où il se trouve réellement (sous la main). Le projet a
+            // « Physics.autoSyncTransforms = 0 » : sur un corps non cinématique,
+            // la physique réimpose sa propre pose au frame suivant, et
+            // l'objet « repartait » à l'endroit d'où il avait été pris au
+            // lieu de rester sous la main.
+            Vector3 releasePosition = _grabbedBody.transform.position;
+            Quaternion releaseRotation = _grabbedBody.transform.rotation;
+
             // Restauration de la position dans la hiérarchie et de la physique.
             _grabbedBody.transform.SetParent(_originalParent, true);
             _grabbedBody.isKinematic = false;
             _grabbedBody.useGravity = true;
+
+            // La pose est authoritative : on l'écrit sur le Rigidbody (et pas
+            // seulement sur le Transform) pour que la physique parte de là.
+            _grabbedBody.position = releasePosition;
+            _grabbedBody.rotation = releaseRotation;
+            Physics.SyncTransforms();
 
             // L'objet redevient un corps physique : on lui restitue son interpolation
             // d'origine pour que sa chute et son lancer restent lisses.
@@ -802,7 +950,7 @@ namespace RemodelerLeReel.VR
         {
             // Fallback Éditeur : si aucun casque XR physique n'est branché,
             // positionner la manette de façon ergonomique devant la caméra
-            if (!XRSettings.isDeviceActive)
+            if (VRDeviceState.EditorFallbackAllowed)
             {
                 var cam = Camera.main;
                 if (cam != null)

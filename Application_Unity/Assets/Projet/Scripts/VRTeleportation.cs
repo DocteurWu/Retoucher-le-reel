@@ -1,3 +1,27 @@
+// =====================================================================================
+//  VRTeleportation.cs — TÉLÉPORTATION BALISTIQUE (arc parabolique)
+//
+//  RÔLE
+//    Pousser le stick gauche vers l'avant affiche un arc et un réticule ; le
+//    relâcher téléporte le joueur sur la surface visée. Geste à deux temps
+//    (viser → relâcher) : c'est le standard VR, il évite les téléportations
+//    involontaires.
+//
+//  À POSER SUR : l'XR Origin. Câbler rayOrigin (la manette qui vise),
+//  headCamera, xrOriginTransform.
+//
+//  ⚠️ Le masque de layers de la téléportation est le layer 6 « Ground » UNIQUEMENT.
+//     Avec « Everything », le joueur se téléportait sur la manette qu'il tenait
+//     ou sur un objet sans surface sous les pieds.
+//
+//  ⚠️ Le joueur est placé à « cible MOINS l'offset de tête » : sans cette
+//     compensation, il atterrit décalé d'autant que sa tête l'était.
+//
+//  ⚠️ Le mode est piloté par VRLocomotionSettings : en mode « Mouvement Continu »,
+//     ce script ne fait rien (le stick gauche déplace le joueur).
+//
+//  RÉFÉRENCES : voir README.md (sections 3 et 4)
+// =====================================================================================
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -139,8 +163,21 @@ namespace RemodelerLeReel.VR
         /// </summary>
         public float timeStep = 0.04f;
 
-        /// <summary>Layers traversés par les rayons de détection du sol. ~0 = tous.</summary>
-        public LayerMask teleportLayerMask = ~0; // Tous les layers par défaut
+        /// <summary>
+        /// Layers traversés par les rayons de détection du sol.
+        ///
+        /// IMPORTANT : ne laissez PAS « Everything ». Avec ~0, le rayon
+        /// s'arrête sur le premier objet碰 rencontré — y compris le socle,
+        /// une machine, un objet tenu en main (qui voyage avec la manette) ou
+        /// le cylindre : le joueur peut se téléporter sur un meuble, ou pire,
+        /// là où il a aucune surface sous les pieds.
+        ///
+        /// Default = layer 6 « Ground » : seules les surfaces réellement
+        /// marchables sont acceptées. Les objets à saisir vont sur le layer
+        /// « Grabbable », qui est exclu du masque.
+        /// </summary>
+        [Tooltip("Layers où l'on peut se téléporter (mettre seulement le sol, PAS Everything)")]
+        public LayerMask teleportLayerMask = 1 << 6; // Ground
 
         /// <summary>
         /// Pente maximale acceptable du sol, en degrés par rapport à l'horizontale.
@@ -168,10 +205,9 @@ namespace RemodelerLeReel.VR
 
         // --- État interne ----------------------------------------------------
 
-        /// <summary>Vrai entre le push du stick et son relâchement (on est en train de viser).</summary>
-        private bool _isAiming;
-
-        /// <summary>Vrai si la dernière frame a trouvé un sol valide au bout de l'arc.</summary>
+        /// <summary>
+        /// Vrai si la dernière frame a trouvé un sol valide au bout de l'arc.
+        /// </summary>
         private bool _hasValidTarget;
 
         /// <summary>Point d'arrivée validé (surface touchée par l'arc).</summary>
@@ -182,6 +218,27 @@ namespace RemodelerLeReel.VR
 
         /// <summary>Action de secours pour lire le joystick (2e niveau de secours).</summary>
         private InputAction _thumbstickAction;
+
+        /// <summary>
+        /// Vrai entre le push du stick et son relâchement (on est en train de viser).
+        /// Exposé publiquement : la locomotion continue s'en sert pour se mettre
+        /// en pause, pour que le joueur ne dérive pas pendant qu'il vise.
+        /// </summary>
+        public static bool IsAiming { get; private set; }
+
+        public static void ResetAiming()
+        {
+            IsAiming = false;
+        }
+
+        /// <summary>Liste de périphériques réutilisée (évite une allocation par frame).</summary>
+        private readonly List<XRInputDevice> _deviceBuffer = new List<XRInputDevice>(4);
+
+        /// <summary>
+        /// Points de l'arc réutilisés d'une frame à l'autre. La capacité est
+        /// préallouée à maxArcPoints pour ne jamais.resize() pendant la visée.
+        /// </summary>
+        private readonly List<Vector3> _arcPoints = new List<Vector3>(64);
 
         // =====================================================================
         // INITIALISATION
@@ -195,6 +252,7 @@ namespace RemodelerLeReel.VR
         /// </summary>
         private void Awake()
         {
+            ResetAiming();
             if (xrOriginTransform == null) xrOriginTransform = transform;
             if (headCamera == null) headCamera = Camera.main;
 
@@ -213,6 +271,7 @@ namespace RemodelerLeReel.VR
         /// <summary>Active l'Input Action quand le composant est activé.</summary>
         private void OnEnable()
         {
+            ResetAiming();
             _thumbstickAction?.Enable();
         }
 
@@ -222,6 +281,7 @@ namespace RemodelerLeReel.VR
         /// </summary>
         private void OnDisable()
         {
+            ResetAiming();
             _thumbstickAction?.Disable();
             SetVisualsActive(false);
         }
@@ -240,6 +300,17 @@ namespace RemodelerLeReel.VR
         /// </summary>
         private void Update()
         {
+            // Vérification du mode de locomotion configuré dans le menu
+            if (VRLocomotionSettings.Mode != LocomotionMode.Teleport)
+            {
+                if (IsAiming)
+                {
+                    IsAiming = false;
+                    SetVisualsActive(false);
+                }
+                return;
+            }
+
             // Auto-recherche du contrôleur si non renseigné
             if (rayOrigin == null)
             {
@@ -257,27 +328,30 @@ namespace RemodelerLeReel.VR
             Vector2 stick = ReadThumbstick();
 
             // Pousser le stick vers l'avant active la visée
-            if (!_isAiming && stick.y > activationThreshold)
+            // (sauf si le stick est réquisitionné par l'échelle de l'objet)
+            bool stickReserved = VRInputLock.IsStickReserved(handNode);
+
+            if (!IsAiming && !stickReserved && stick.y > activationThreshold)
             {
-                _isAiming = true;
+                IsAiming = true;
                 SetVisualsActive(true);
             }
 
-            if (_isAiming)
+            if (IsAiming)
             {
                 // On recalcule la parabole en continu : la cible bouge avec le joueur.
                 UpdateArcAndTarget();
 
-                // Relâcher le stick déclenche la téléportation
-                if (stick.y < releaseThreshold)
+                // Relâcher le stick (ou le perdre au profit de l'échelle) téléporte.
+                if (stick.y < releaseThreshold || stickReserved)
                 {
                     // On ne téléporte QUE si la destination a été validée (sol plat).
-                    if (_hasValidTarget)
+                    if (_hasValidTarget && !stickReserved)
                     {
                         PerformTeleport(_targetPosition);
                     }
 
-                    _isAiming = false;
+                    IsAiming = false;
                     SetVisualsActive(false);
                 }
             }
@@ -293,18 +367,18 @@ namespace RemodelerLeReel.VR
         /// </summary>
         private Vector2 ReadThumbstick()
         {
-            // 1. Essai via XR InputDevice
+            // 1. Essai via XR InputDevice (buffer réutilisé : 0 allocation par frame)
             XRInputDevice device = InputDevices.GetDeviceAtXRNode(handNode);
             if (!device.isValid)
             {
                 // Nœud non résolu → recherche par caractéristiques (contrôleur + côté).
-                var inputDevices = new List<XRInputDevice>();
+                _deviceBuffer.Clear();
                 InputDeviceCharacteristics characteristics = InputDeviceCharacteristics.Controller |
                     (handNode == XRNode.LeftHand ? InputDeviceCharacteristics.Left : InputDeviceCharacteristics.Right);
-                InputDevices.GetDevicesWithCharacteristics(characteristics, inputDevices);
-                if (inputDevices.Count > 0)
+                InputDevices.GetDevicesWithCharacteristics(characteristics, _deviceBuffer);
+                if (_deviceBuffer.Count > 0)
                 {
-                    device = inputDevices[0];
+                    device = _deviceBuffer[0];
                 }
             }
 
@@ -334,8 +408,8 @@ namespace RemodelerLeReel.VR
                     : (dev.usages.Contains(UnityEngine.InputSystem.CommonUsages.RightHand) || dev.name.ToLower().Contains("right"));
                 if (!isTarget) continue;
 
-                var stick = dev.GetChildControl<UnityEngine.InputSystem.Controls.Vector2Control>("thumbstick") ??
-                            dev.GetChildControl<UnityEngine.InputSystem.Controls.Vector2Control>("primary2DAxis");
+                var stick = VRInputControls.FindAny<UnityEngine.InputSystem.Controls.Vector2Control>(
+                    dev, "thumbstick", "primary2DAxis", "stick");
                 if (stick != null)
                 {
                     Vector2 v = stick.ReadValue();
@@ -343,14 +417,23 @@ namespace RemodelerLeReel.VR
                 }
             }
 
-            // 4. Fallback Clavier / Éditeur (Flèche haut ou touche T)
-            if (Keyboard.current != null)
+            // 4. Fallback Clavier / Éditeur (Flèche haut ou touche T) — uniquement
+            //    sans casque actif, comme partout ailleurs dans le projet.
+#if UNITY_EDITOR
+            if (VRDeviceState.EditorFallbackAllowed && Keyboard.current != null)
             {
                 if (Keyboard.current.tKey.isPressed || Keyboard.current.upArrowKey.isPressed)
                 {
                     return new Vector2(0f, 1f);
                 }
+
+                // Flèches gauche/droite : utile pour tester le masque de
+                // téléportation sans casque (on vise vers le haut, puis on
+                // choisit la cible avec les flèches horizontales).
+                if (Keyboard.current.leftArrowKey.isPressed) return new Vector2(-1f, 1f);
+                if (Keyboard.current.rightArrowKey.isPressed) return new Vector2(1f, 1f);
             }
+#endif
 
             return Vector2.zero;
         }
@@ -394,7 +477,11 @@ namespace RemodelerLeReel.VR
             Vector3 gravity = Physics.gravity;
 
             // Liste des points qui composeront la ligne affichée.
-            List<Vector3> points = new List<Vector3> { startPos };
+            // Buffer réutilisé + capacite préallouée : la visée tourne à 72 Hz
+            // en VR, une allocation par frame ici se traduit par des pics de GC
+            // exactement au moment où le joueur en peut le moins les prévoir.
+            _arcPoints.Clear();
+            _arcPoints.Add(startPos);
             Vector3 currentPos = startPos;
             Vector3 currentVel = startVelocity;
 
@@ -413,18 +500,24 @@ namespace RemodelerLeReel.VR
                 // joueur à l'autre bout du niveau.
                 if (Vector3.Distance(nextPos, startPos) > maxTeleportDistance)
                 {
-                    points.Add(startPos + (nextPos - startPos).normalized * maxTeleportDistance);
+                    _arcPoints.Add(startPos + (nextPos - startPos).normalized * maxTeleportDistance);
                     break;
                 }
 
                 // Direction et longueur du segment juste calculé (pour le rayon de détection).
                 Vector3 segmentDir = nextPos - currentPos;
                 float segmentDist = segmentDir.magnitude;
+                if (segmentDist < 1e-5f) break;
 
                 // Rayon du point courant vers le point suivant, sur les layers autorisés.
-                if (Physics.Raycast(currentPos, segmentDir.normalized, out RaycastHit hit, segmentDist, teleportLayerMask))
+                //
+                // QueryTriggerInteraction.Ignore : les-trigger (sphères de préhension
+                // des manettes) ne doivent JAMAIS pouvoir servir de destination, ni
+                // interrompre l'arc. Sinon on se téléporte sur une manette.
+                if (Physics.Raycast(currentPos, segmentDir.normalized, out RaycastHit hit,
+                                    segmentDist, teleportLayerMask, QueryTriggerInteraction.Ignore))
                 {
-                    points.Add(hit.point); // L'arc s'arrête exactement sur l'impact.
+                    _arcPoints.Add(hit.point); // L'arc s'arrête exactement sur l'impact.
 
                     // Vérifier si la surface est suffisamment plate pour y marcher
                     float slopeAngle = Vector3.Angle(hit.normal, Vector3.up);
@@ -438,15 +531,20 @@ namespace RemodelerLeReel.VR
                 }
 
                 // Pas d'impact : on continue la parabole.
-                points.Add(nextPos);
+                _arcPoints.Add(nextPos);
                 currentPos = nextPos;
             }
 
             // Affichage de la ligne
             if (arcRenderer != null)
             {
-                arcRenderer.positionCount = points.Count;
-                arcRenderer.SetPositions(points.ToArray());
+                // SetPosition en boucle plutôt que SetPositions(list.ToArray()) :
+                // évite de copier le tableau à chaque frame pendant la visée.
+                arcRenderer.positionCount = _arcPoints.Count;
+                for (int i = 0; i < _arcPoints.Count; i++)
+                {
+                    arcRenderer.SetPosition(i, _arcPoints[i]);
+                }
 
                 // Vert si valide, rouge sinon ; dégradé d'opacité pour un effet de fuite.
                 Color col = _hasValidTarget ? validArcColor : invalidArcColor;

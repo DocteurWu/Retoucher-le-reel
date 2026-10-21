@@ -1,3 +1,26 @@
+// =====================================================================================
+//  VRThrowableRespawn.cs — REMISE EN PLACE D'UN OBJET (RESPAWN)
+//
+//  RÔLE
+//    Deux déclencheurs :
+//      1. CHUTE : si l'objet passe sous minHeightBeforeRespawn (−2 m), il est
+//         remis exactement sur sa position/rotation de départ (« le socle »).
+//      2. RAPPEL MANUEL (désactivé par défaut, enableButtonRecall) : bouton de
+//         manette ou touche R. Déactivé car A/B/X/Y sont réservés à
+//         dupliquer/supprimer.
+//
+//  À POSER SUR : le même objet que le Rigidbody à surveiller.
+//
+//  ⚠️ La position de rappel est capturée dans Start() (et non dans Awake()) :
+//     sur un corps non cinématique, la physique réimpose sa propre pose au
+//     frame suivant ; capturer trop tôt mémoriserait une pose erronée.
+//
+//  ⚠️ Le repositionnement passe par Rigidbody.position/rotation ET par le
+//     Transform : le premier est autoritaire pour la physique, le second évite
+//     le « flicker » d'une image.
+//
+//  RÉFÉRENCES : voir README.md (section 4)
+// =====================================================================================
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -13,8 +36,9 @@ namespace RemodelerLeReel.VR
     /// Deux déclencheurs :
     ///  1. CHUTE : si l'objet passe sous minHeightBelowRespawn (par défaut -2 m), on le
     ///     replace sur son socle. Évite qu'il tombe à l'infini et que le joueur le perde.
-    ///  2. RAPPEL MANUEL : appui sur le bouton A / X de la manette (ou touche R au clavier).
-    ///     Permet au joueur de « recharger » l'objet à tout moment.
+    ///  2. RAPPEL MANUEL (optionnel) : appui sur un bouton de manette ou touche R au
+    ///     clavier. Désactivé par défaut pour ne pas entrer en conflit avec les actions
+    ///     dupliquer/supprimer (X/Y). Réactivable via « enableButtonRecall ».
     ///
     /// LA POSITION DE RÉFÉRENCE est mémorisée dans Awake(), c'est-à-dire à l'instant
     /// où la scène se charge : c'est donc la position posée dans l'éditeur qui sert
@@ -34,6 +58,15 @@ namespace RemodelerLeReel.VR
         /// doit être replacé. -2 m = s'il tombe de 2 mètres sous le point de départ.
         /// </summary>
         public float minHeightBeforeRespawn = -2.0f;
+
+        /// <summary>
+        /// Autorise le rappel manuel via les boutons de la manette (A/B/X/Y) ou la touche R.
+        /// Désactivé par défaut : A/B/X/Y sont réservés au DUPLIQUER / SUPPRIMER, et
+        /// déclencher le respawn en même temps ferait revenir l'objet à son socle au lieu
+        /// d'agir dessus. Le respawn automatique par chute reste toujours actif.
+        /// </summary>
+        [Tooltip("Rappel manuel via boutons manette A/B/X/Y ou touche R (décoché : X/Y libres pour dupliquer/supprimer)")]
+        public bool enableButtonRecall = false;
 
         // --- Mémoire interne ------------------------------------------------
 
@@ -58,15 +91,38 @@ namespace RemodelerLeReel.VR
         // INITIALISATION
         // =====================================================================
 
-        /// <summary>
-        /// APPELÉ UNE SEULE FOIS au chargement.
-        /// On capture la position et la rotation actuelles comme point de rappel.
+/// <summary>
+        /// (Re)mémorise le point de rappel à la position ACTUELLE de l'objet.
+        ///
+        /// Appelée automatiquement au <see cref="Start"/> (donc APRÈS le
+        /// Awake), ce qui est indispensable pour les clones :
+        /// <c>VRDuplicateDelete</c> instancie l'objet déjà positionné, mais un
+        /// Rigidbody non cinématique est replacé par la physique au frame
+        /// suivant. Capturer dans l'Awake revenait à mémoriser la pose
+        /// paritaire (l'objet « planté » à l'origine de la scène), d'où des
+        /// clones qui réapparaissaient au mauvais endroit après une chute.
+        ///
+        /// Appelable explicitement par un script qui vient de déplacer
+        /// l'objet (voir <c>CaptureSpawnPoint</c>).
         /// </summary>
+        public void CaptureSpawnPoint()
+        {
+            _spawnPosition = transform.position;
+            _spawnRotation = transform.rotation;
+        }
+
         private void Awake()
         {
             _rb = GetComponent<Rigidbody>();
-            _spawnPosition = transform.position;
-            _spawnRotation = transform.rotation;
+        }
+
+        /// <summary>
+        /// Capture tardive, après que la physique a eu l'occasion de replacer
+        /// l'objet. Start est le premier moment où la pose est fiable.
+        /// </summary>
+        private void Start()
+        {
+            CaptureSpawnPoint();
         }
 
         // =====================================================================
@@ -105,12 +161,16 @@ namespace RemodelerLeReel.VR
         /// </summary>
         private bool IsRecallButtonPressed()
         {
-            // 1. Clavier (touche R) — pratique pour tester dans l'éditeur.
+            // 1. Clavier (touche R) — pratique pour tester dans l'éditeur. Toujours actif.
             if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
                 return true;
 
-            // 2. Parcours de toutes les manettes connectées :
-            //    bouton principal (A sur la droite, X sur la gauche) ou secondaire (B / Y).
+            // 2. Boutons de manette : désactivés par défaut (enableButtonRecall) car
+            //    A/B/X/Y sont réservés aux actions dupliquer/supprimer. Réactivables
+            //    depuis l'Inspector si besoin.
+            if (!enableButtonRecall)
+                return false;
+
             var devices = new List<XRInputDevice>();
             InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller, devices);
             foreach (var dev in devices)
@@ -170,6 +230,18 @@ namespace RemodelerLeReel.VR
             _rb.useGravity = true;
             _rb.linearVelocity = Vector3.zero;
             _rb.angularVelocity = Vector3.zero;
+
+            // On passe par Rigidbody.position/rotation et NON par
+            // transform.SetPositionAndRotation : sur un corps NON cinématique,
+            // déplacer le Transform est ignoré au frame suivant par la
+            // physique (qui réimpose sa propre pose), ce qui faisait
+            // « flicker » l'objet à sa position d'origine au lieu de le
+            // replacer. Les propriétés Rigidbody, elles, sont autoritaires.
+            _rb.position = _spawnPosition;
+            _rb.rotation = _spawnRotation;
+
+            // Le Transform suit immédiatement, sans attendre le step physique :
+            // sinon le joueur voit l'objet à l'ancien endroit pendant une image.
             transform.SetPositionAndRotation(_spawnPosition, _spawnRotation);
         }
     }

@@ -1,4 +1,30 @@
+// =====================================================================================
+//  VRScaleGrab.cs — ÉCHELLE DE L'OBJET TENU
+//
+//  RÔLE
+//    Redimensionne l'objet tenu par l'une des mains, avec deux gestes
+//    (combinables, mais un seul à la fois — voir plus bas) :
+//      • Thumbstick : stick droit vers le haut/bas (facteur e^(axe × sensibilité × dt),
+//        donc la même vitesse à 72 et 120 Hz).
+//      • TwoHands   : on tient l'objet d'une main et on MAINTIENT le grip de
+//        l'autre main ; l'écartement des deux manettes pilote l'échelle.
+//
+//  À POSER SUR : UNE seule main (la droite dans la scène de jeu). L'autre main
+//  est détectée automatiquement.
+//
+//  ⚠️ ORDRE D'EXÉCUTION : −50, donc AVANT VRGrabHand (0). C'est ce composant
+//     qui arme VRInputLock : la saisie doit voir le verrou dans la MÊME frame,
+//     sinon la main libre vole l'objet en cours de redimensionnement.
+//     Le verrou expirant au bout d'une frame, il doit être RÉ-ARMÉ à chaque
+//     frame du geste (voir ContinuePinch et UpdateThumbstick).
+//
+//  ⚠️ Un seul geste à la fois : le pincement et le stick écrivent la même
+//     échelle (sinon : dérive inexplicable).
+//
+//  RÉFÉRENCES : voir README.md (sections 3, 4 et 5)
+// =====================================================================================
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
@@ -40,6 +66,11 @@ namespace RemodelerLeReel.VR
     ///
     /// Le suivi 6-DOF des manettes est assuré par VRGrabHand sur le même GameObject ;
     /// ce composant ne fait que lire la position de son propre Transform.
+    ///
+    /// ORDRE D'EXÉCUTION : -50, donc AVANT VRGrabHand (0). C'est indispensable :
+    /// c'est ce composant qui arme le verrou d'entrée, et VRGrabHand doit le
+    /// voir dans la MÊME frame pour interdire à la main libre de voler l'objet
+    /// en cours de redimensionnement.
     /// </summary>
     [DefaultExecutionOrder(-50)]
     [AddComponentMenu("Remodeler le Reel/VR/VR Scale Grab (Echelle de l'objet saisi)")]
@@ -51,6 +82,12 @@ namespace RemodelerLeReel.VR
 
         [Tooltip("Main qui porte ce script (l'autre main est détectée automatiquement)")]
         public XRNode handNode = XRNode.RightHand;
+
+        [Header("--- Référence de taille ---")]
+        [Tooltip("Ancrer les limites (×N) et la masse sur la taille INITIALE de l'objet, figée " +
+                 "une seule fois : elle ne se réinitialise plus à chaque saisie/re-saisie. " +
+                 "Décoché = ancien comportement (référence reprise à chaque saisie).")]
+        public bool anchorToInitialSize = true;
 
         [Header("--- Stick ---")]
         [Tooltip("Sensibilité : facteur d'échelle par seconde quand le stick est poussé à fond")]
@@ -67,9 +104,9 @@ namespace RemodelerLeReel.VR
         public float minPinchDistance = 0.03f;
 
         [Header("--- Limites par défaut (sans composant VRScalable) ---")]
-        [Tooltip("Taille minimale en % de la taille à la saisie")]
+        [Tooltip("Taille minimale en % de la taille INITIALE de l'objet")]
         public float defaultMinRatio = 0.25f;
-        [Tooltip("Taille maximale en % de la taille à la saisie")]
+        [Tooltip("Taille maximale en % de la taille INITIALE de l'objet")]
         public float defaultMaxRatio = 4f;
 
         [Header("--- Son ---")]
@@ -103,6 +140,7 @@ namespace RemodelerLeReel.VR
 
         /// <summary>Vrai tant qu'un objet est saisi et prêt à être redimensionné.</summary>
         public bool IsScaling => _target != null;
+        public static bool IsScalingActive { get; private set; }
 
         /// <summary>
         /// Durée sans changement d'échelle après laquelle on considère que le geste est
@@ -118,7 +156,21 @@ namespace RemodelerLeReel.VR
         private VRScalable _marker;           // limits optionnelles de l'objet
         private Transform _holderHand;        // main qui tient réellement l'objet
         private XRNode _holderNode = XRNode.RightHand;
-        private float _baseWorldSize = 1f;    // plus grande dimension au moment de la saisie
+
+        /// <summary>
+        /// Nœud du stick qui sert au redimensionnement.
+        ///
+        /// C'est le stick de la MAIN LIBRE, jamais celui de la main qui tient :
+        /// le joueur tient l'objet d'une main et pilote l'échelle de l'autre,
+        /// ce qui laisse la main qui tient entièrement disponible. Lire le
+        /// stick de la main qui tiendrait ferait qu'un simple mouvement du
+        /// pouce pendant la préhension redimensionne l'objet par surprise.
+        /// <summary>
+        /// Nœud du stick qui sert au redimensionnement (toujours le stick droit selon consigne).
+        /// </summary>
+        private XRNode ScaleStickNode => XRNode.RightHand;
+        private float _baseWorldSize = 1f;    // taille de référence « 1× » (base des limites et de la masse)
+        private Rigidbody _baseRefBody;       // objet auquel appartient _baseWorldSize (pour le figer par objet)
         private float _baseMass;              // masse du Rigidbody à la saisie
         private bool _scaleMass;             // VRScalable.scaleRigidbodyMass
 
@@ -170,31 +222,62 @@ namespace RemodelerLeReel.VR
             if (!TryGetHeldObject(out Transform holder, out XRNode holderNode, out Rigidbody body) ||
                 IsScalingDisabled(body))
             {
+                IsScalingActive = false;
+                // On relâche explicitement le verrou d'entrée : sans objet en
+                // main, le stick est de nouveau disponible pour la locomotion.
+                VRInputLock.EndScaleMode();
                 ResetGesture();
                 UpdateScaleAudio();
                 return;
             }
 
-            // Nouvel objet saisi (ou changement de main) : on mémorise sa taille de
-            // référence, c'est elle qui sert de base aux limites min/max et à la masse.
+            // Nouvel objet saisi (ou changement de main) : on (re)configure la cible.
             if (_target != body)
             {
                 _target = body;
                 _targetTransform = body.transform;
                 _marker = _targetTransform.GetComponent<VRScalable>();
-                _baseWorldSize = MaxAxis(_targetTransform.lossyScale);
                 _scaleMass = _marker != null && _marker.scaleRigidbodyMass;
                 _baseMass = (_marker != null && _marker.body != null) ? _marker.body.mass : body.mass;
                 EndPinch();
             }
 
+            // Taille de référence « 1× » (base des limites ×N et de la masse) :
+            //  - anchorToInitialSize : ANCRÉE sur la taille INITIALE de l'objet. Elle est
+            //    mémorisée une SEULE fois par objet et survit au relâchement / à la
+            //    re-saisie : ×3 reste donc ×3 de la taille de départ (et non de la taille
+            //    courante), et un « reset » revient bien à l'échelle d'origine.
+            //  - sinon : reprise de la taille courante à chaque saisie (ancien comportement).
+            if (!anchorToInitialSize)
+            {
+                _baseWorldSize = MaxAxis(body.transform.lossyScale);
+                _baseRefBody = null;
+            }
+            else if (_baseRefBody != body)
+            {
+                _baseRefBody = body;
+                _baseWorldSize = _marker != null
+                    ? _marker.InitialWorldSize
+                    : MaxAxis(body.transform.lossyScale);
+            }
+
             _holderHand = holder;
             _holderNode = holderNode;
 
-            // Les deux gestes écrivent dans la même méthode (ApplyWorldScale) : on peut
-            // donc les activer séparément ou ensemble sans qu'ils se marchent dessus.
-            if (mode != GrabScaleMode.Thumbstick) UpdateTwoHandsPinch();
-            if (mode != GrabScaleMode.TwoHands) UpdateThumbstick();
+            // ⚠️ Les deux gestes écrivent dans la même méthode (ApplyWorldScale).
+            // Les conditions étaient INVERSÉES (le pincement était actif en mode
+            // « Thumbstick » et le stick en mode « TwoHands ») : on les active
+            // maintenant selon le mode réellement choisi.
+            bool allowPinch = mode == GrabScaleMode.TwoHands || mode == GrabScaleMode.Both;
+            bool allowStick = mode == GrabScaleMode.Thumbstick || mode == GrabScaleMode.Both;
+
+            if (allowPinch) UpdateTwoHandsPinch();
+            IsScalingActive = true;
+
+            // ⚠️ UN SEUL GESTE À LA FOIS : le pincement à deux mains et le stick
+            // écrivaient tous les deux l'échelle en même temps (dérive). Quand le
+            // pincement est en cours, le stick est ignoré (et inversement).
+            if (allowStick && !_pinching) UpdateThumbstick();
 
             UpdateScaleAudio();
         }
@@ -235,30 +318,17 @@ namespace RemodelerLeReel.VR
         /// </summary>
         private bool TryGetHeldObject(out Transform holder, out XRNode holderNode, out Rigidbody body)
         {
-            holder = null;
-            holderNode = handNode;
-            body = null;
-
-            Rigidbody mine = FindHeldBody(transform);
-            if (mine != null)
+            body = VRGrabHand.GetAnyGrabbedBody(out VRGrabHand h);
+            if (body != null && h != null)
             {
-                holder = transform;
-                body = mine;
+                holder = h.transform;
+                holderNode = h.handNode;
                 return true;
             }
 
-            if (_otherHand != null)
-            {
-                Rigidbody other = FindHeldBody(_otherHand.transform);
-                if (other != null)
-                {
-                    holder = _otherHand.transform;
-                    holderNode = _otherHand.handNode;
-                    body = other;
-                    return true;
-                }
-            }
-
+            holder = null;
+            holderNode = handNode;
+            body = null;
             return false;
         }
 
@@ -329,6 +399,11 @@ namespace RemodelerLeReel.VR
             _pinchStartDistance = Mathf.Max(Vector3.Distance(_holderHand.position, freeHand.position), minPinchDistance);
             _pinchStartScale = _targetTransform.lossyScale;
             _pinchFactor = 1f;
+
+            // Pendant un pincement à deux mains, le joueur est en train de
+            // dimensionner : la préhension de la main libre est inhibée et le
+            // stick de cette main passe en commande d'échelle.
+            VRInputLock.BeginScaleMode(ScaleStickNode);
         }
 
         /// <summary>
@@ -344,6 +419,11 @@ namespace RemodelerLeReel.VR
             _pinchFactor = pinchSmoothing > 0f
                 ? Mathf.Lerp(_pinchFactor, wanted, 1f - Mathf.Exp(-pinchSmoothing * Time.deltaTime))
                 : wanted;
+
+            // Le verrou d'entrée expire au bout d'une frame : il faut le
+            // RÉ-ARMER à chaque frame du pincement, sinon la main libre
+            // pourrait reprendre l'objet au milieu du geste.
+            VRInputLock.BeginScaleMode(ScaleStickNode);
 
             ApplyWorldScale(_pinchStartScale * _pinchFactor);
         }
@@ -362,8 +442,17 @@ namespace RemodelerLeReel.VR
         /// </summary>
         private void UpdateThumbstick()
         {
-            float axis = ReadThumbstickAxis(_holderNode);
+            // On lit le stick de la MAIN LIBRE (voir ScaleStickNode) : le joueur
+            // tient l'objet d'une main et règle l'échelle avec l'autre.
+            float axis = ReadThumbstickAxis(XRNode.RightHand);
             if (Mathf.Abs(axis) < 0.001f) return;
+
+            // Le stick est pris par l'échelle : on le déclare aux autres scripts
+            // (téléportation / locomotion / préhension) pour qu'ils s'effacent
+            // le temps du geste. Sans ça, pousser le stick téléporte le joueur
+            // ET redimensionne l'objet en même temps.
+            VRInputLock.BeginScaleMode(ScaleStickNode);
+
             if (invertStick) axis = -axis;
 
             float factor = Mathf.Exp(axis * stickSensitivity * Time.deltaTime);
@@ -533,8 +622,8 @@ namespace RemodelerLeReel.VR
 
         /// <summary>
         /// Bornage de la taille. Deux familles de limites, combinées :
-        ///   - relatives à la taille de départ : minSizeRatio / maxSizeRatio (VRScalable
-        ///     de l'objet, sinon defaultMinRatio / defaultMaxRatio du composant) ;
+        ///   - relatives à la taille de référence « 1× » (initiale) : minSizeRatio /
+        ///     maxSizeRatio (VRScalable de l'objet, sinon defaultMinRatio / defaultMaxRatio) ;
         ///   - absolues en mètres : minWorldSize / maxWorldSize, qui protègent des
         ///     objets minuscules ou géants.
         /// Le bornage se fait sur la plus grande dimension, puis on met les trois axes
@@ -561,6 +650,7 @@ namespace RemodelerLeReel.VR
         /// <summary>Remet à zéro l'état de saisie (appelé quand plus rien n'est tenu).</summary>
         private void ResetGesture()
         {
+            IsScalingActive = false;
             _target = null;
             _targetTransform = null;
             _marker = null;
@@ -580,7 +670,7 @@ namespace RemodelerLeReel.VR
         /// </summary>
         private static float ReadPressValue(XRNode node)
         {
-            XRInputDevice device = InputDevices.GetDeviceAtXRNode(node);
+            XRInputDevice device = GetControllerDevice(node);
             if (device.isValid)
             {
                 if (device.TryGetFeatureValue(CommonUsages.grip, out float grip) && grip > 0f) return grip;
@@ -594,15 +684,15 @@ namespace RemodelerLeReel.VR
                 InputDevice dev = devices[i];
                 if (!DeviceMatchesHand(dev, isLeft)) continue;
 
-                var gripControl = dev.GetChildControl<AxisControl>("grip");
+                var gripControl = VRInputControls.Find<AxisControl>(dev, "grip");
                 if (gripControl != null) return gripControl.ReadValue();
 
-                var triggerControl = dev.GetChildControl<AxisControl>("trigger");
+                var triggerControl = VRInputControls.Find<AxisControl>(dev, "trigger");
                 if (triggerControl != null) return triggerControl.ReadValue();
             }
 
 #if UNITY_EDITOR
-            if (!XRSettings.isDeviceActive && Mouse.current != null)
+            if (VRDeviceState.EditorFallbackAllowed && Mouse.current != null)
             {
                 ButtonControl button = isLeft ? Mouse.current.leftButton : Mouse.current.rightButton;
                 if (button.isPressed) return 1f;
@@ -621,38 +711,29 @@ namespace RemodelerLeReel.VR
         /// </summary>
         private static float ReadThumbstickAxis(XRNode node)
         {
+            Vector2 stick = VRStickReader.Read(node);
+            return Mathf.Clamp(stick.y, -1f, 1f);
+        }
+
+        /// <summary>
+        /// Retrouve la manette correspondant à un nœud XR, avec repli par
+        /// caractéristiques « Controlleur + main » si <see cref="InputDevices.GetDeviceAtXRNode(XRNode)"/>
+        /// renvoie un device invalide (fréquent sous OpenXR). Même pattern que le
+        /// suivi de <c>VRGrabHand</c> : sans ce repli, le niveau 1 est simplement
+        /// court-circuité et la lecture dépend entièrement du New Input System.
+        /// </summary>
+        private static XRInputDevice GetControllerDevice(XRNode node)
+        {
             XRInputDevice device = InputDevices.GetDeviceAtXRNode(node);
-            if (device.isValid &&
-                device.TryGetFeatureValue(CommonUsages.primary2DAxis, out Vector2 xrAxis) &&
-                xrAxis.sqrMagnitude > 0.0001f)
-            {
-                return Mathf.Clamp(xrAxis.y, -1f, 1f);
-            }
+            if (device.isValid) return device;
 
-            bool isLeft = node == XRNode.LeftHand;
-            var devices = InputSystem.devices;
-            for (int i = 0; i < devices.Count; i++)
-            {
-                InputDevice dev = devices[i];
-                if (!DeviceMatchesHand(dev, isLeft)) continue;
+            InputDeviceCharacteristics characteristics =
+                InputDeviceCharacteristics.Controller |
+                (node == XRNode.LeftHand ? InputDeviceCharacteristics.Left : InputDeviceCharacteristics.Right);
 
-                var stick = dev.GetChildControl<Vector2Control>("thumbstick") ??
-                            dev.GetChildControl<Vector2Control>("primary2DAxis");
-                if (stick == null) continue;
-
-                Vector2 value = stick.ReadValue();
-                if (value.sqrMagnitude > 0.0001f) return Mathf.Clamp(value.y, -1f, 1f);
-            }
-
-#if UNITY_EDITOR
-            if (!XRSettings.isDeviceActive && Keyboard.current != null)
-            {
-                if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed) return 1f;
-                if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed) return -1f;
-            }
-#endif
-
-            return 0f;
+            var found = new List<XRInputDevice>();
+            InputDevices.GetDevicesWithCharacteristics(characteristics, found);
+            return found.Count > 0 ? found[0] : default;
         }
 
         /// <summary>

@@ -42,3 +42,7 @@
 *.asmdef text eol=lf
 *.inputactions text eol=lf
 *.bin filter=lfs diff=lfs merge=lfs -text
+# Donnees binaires des Gaussian Splatting (un .bytes par canal : pos, col,
+# oth, shs, chk). Ces fichiers pèsent plusieurs dizaines de Mo : ils doivent
+# passer par Git LFS, sinon le clone devient interminable et le dépôt gonfle.
+*.bytes filter=lfs diff=lfs merge=lfs -text
