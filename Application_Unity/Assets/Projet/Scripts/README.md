@@ -134,6 +134,30 @@ mains restent correctement placées dans le repère du joueur.
 
 ---
 
+## 4 bis. Le jeu (dossier `Scripts/Jeu/`)
+
+Le dossier `Scripts/` contient le **module VR** (saisir, dupliquer, supprimer,
+redimensionner, se déplacer). Le dossier `Scripts/Jeu/` contient **le jeu** :
+la narration, les objectifs, les chapitres.
+
+| Script | Rôle | Points d'attention |
+|---|---|---|
+| `Jeu/NarrationSequence.cs` | Un moment de l'histoire : répliques + déclencheur (démarrage, enchaînement, saisie, regard, zone…). Plusieurs par objet « Narration » | Ajoute seul sa `NarrationBulle` |
+| `Jeu/NarrationBulle.cs` | La bulle partagée : écriture lettre par lettre, voix, file d'attente, suivi du regard | Dessinée par-dessus le décor (ZTest Always) |
+
+Le jeu est construit **pas à pas** : 1 étape = 1 fichier = 1 responsabilité, chaque
+étape est jouable seule. L'escalier complet et les fiches d'étape sont dans
+[`Jeu/README.md`](Jeu/README.md).
+
+Outils d'éditeur (dossier `Scripts/Editor/`, **absent du build**) :
+
+| Script | Rôle |
+|---|---|
+| `OutilsScene.cs` | Installe un composant dans les scènes sans les éditer à la main |
+| `VerificationsAuto.cs` | Vérifie en mode Play qu'une brique fait bien son travail |
+
+---
+
 ## 5. Le verrou d'entrée (`VRInputLock`)
 
 Problème résolu : le « mode échelle » doit interdire à la main libre de saisir un

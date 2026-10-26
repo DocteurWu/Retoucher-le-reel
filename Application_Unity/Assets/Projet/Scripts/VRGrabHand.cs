@@ -122,7 +122,7 @@ namespace RemodelerLeReel.VR
         /// bouge plus ensuite, et l'objet semble alors « ne pas suivre la manette ».
         /// </summary>
         [Tooltip("Coller l'objet exactement sous la main au moment de la saisie")]
-        public bool snapToHandOnGrab = true;
+        public bool snapToHandOnGrab = false;
 
         /// <summary>
         /// Décalage local appliqué à l'objet une fois collé dans la main (en mètres,
@@ -132,10 +132,37 @@ namespace RemodelerLeReel.VR
         [Tooltip("Décalage local de l'objet collé dans la main (mètres)")]
         public Vector3 gripOffset = Vector3.zero;
 
+        // --- Retours haptiques (vibrations) -----------------------------------
+
+        [Header("Haptique (Vibrations)")]
+        [Tooltip("Activer les retours haptiques sur cette manette")]
+        public bool enableHaptics = true;
+
+        [Range(0f, 1f), Tooltip("Intensité de la vibration lors de la saisie (grab)")]
+        public float grabHapticIntensity = 0.5f;
+
+        [Tooltip("Durée de la vibration lors de la saisie (secondes)")]
+        public float grabHapticDuration = 0.08f;
+
+        [Range(0f, 1f), Tooltip("Intensité de la vibration lors du relâchement / lancer")]
+        public float releaseHapticIntensity = 0.25f;
+
+        [Tooltip("Durée de la vibration lors du relâchement (secondes)")]
+        public float releaseHapticDuration = 0.05f;
+
         // --- État de la saisie ------------------------------------------------
 
         /// <summary>Objet actuellement tenu par cette main (null si main vide).</summary>
         private Rigidbody _grabbedBody;
+
+        /// <summary>Profil haptique spécifique de l'objet actuellement saisi (ou null si aucun composant).</summary>
+        private VRHapticInteractable _heldHaptic;
+
+        /// <summary>Priorité de la vibration en cours de jeu sur la manette.</summary>
+        private int _currentHapticPriority = -1;
+
+        /// <summary>Temps de fin prévu de la vibration actuelle.</summary>
+        private float _hapticEndTime = 0f;
 
         /// <summary>
         /// Parent d'origine de l'objet, mémorisé au moment de la saisie.
@@ -170,6 +197,12 @@ namespace RemodelerLeReel.VR
         /// </summary>
         public Rigidbody GrabbedBody => _grabbedBody;
 
+        /// <summary>Vrai si cette main tient actuellement un objet.</summary>
+        public bool IsHoldingObject => _grabbedBody != null;
+
+        /// <summary>Vrai si l'entrée de saisie (grip, bouton ou pincement) est active ce frame.</summary>
+        public bool IsGrabInputActive { get; private set; }
+
         /// <summary>
         /// Parent d'origine de l'objet tenu, mémorisé au moment de la saisie (null si
         /// aucun objet n'est tenu). Permet à un autre composant de replacer ou de
@@ -180,6 +213,15 @@ namespace RemodelerLeReel.VR
 
         /// <summary>Liste active de toutes les mains VRGrabHand enregistrees.</summary>
         public static readonly List<VRGrabHand> AllHands = new List<VRGrabHand>(2);
+
+        /// <summary>
+        /// Un objet vient d'être saisi (main, objet). Écouté par la narration
+        /// (<c>NarrationSequence</c>) : penser à se désabonner dans OnDisable.
+        /// </summary>
+        public static event System.Action<VRGrabHand, Rigidbody> ObjetSaisi;
+
+        /// <summary>Un objet vient d'être relâché (main, objet).</summary>
+        public static event System.Action<VRGrabHand, Rigidbody> ObjetLache;
 
         /// <summary>Vrai si au moins une main tient un objet.</summary>
         public static bool AnyHandGrabbing()
@@ -206,6 +248,19 @@ namespace RemodelerLeReel.VR
             return null;
         }
 
+        /// <summary>Retourne le composant VRGrabHand associé à un nœud XR donné (LeftHand ou RightHand).</summary>
+        public static VRGrabHand GetHandForNode(XRNode node)
+        {
+            for (int i = 0; i < AllHands.Count; i++)
+            {
+                if (AllHands[i] != null && AllHands[i].handNode == node)
+                {
+                    return AllHands[i];
+                }
+            }
+            return null;
+        }
+
         // --- Historique des vitesses (pour le lancer) -------------------------
 
         // Historique des vitesses pour un lancer fluide et naturel
@@ -219,11 +274,28 @@ namespace RemodelerLeReel.VR
         /// <summary>Vitesse angulaire de la main sur les 8 dernières frames (rad/s).</summary>
         private readonly Queue<Vector3> _angularVelocitySamples = new Queue<Vector3>(VelocitySampleCount);
 
-        /// <summary>Position mondiale de la main à la frame précédente.</summary>
-        private Vector3 _lastWorldPos;
+        /// <summary>
+        /// Position de la main à la frame précédente, dans le repère de TRACKING
+        /// (et non en monde) : un déplacement du rig (téléportation, escalade,
+        /// locomotion) ne doit pas être compté comme un mouvement de la main.
+        /// </summary>
+        private Vector3 _lastTrackingPos;
 
-        /// <summary>Rotation mondiale de la main à la frame précédente.</summary>
-        private Quaternion _lastWorldRot;
+        /// <summary>Rotation de la main à la frame précédente, dans le repère de tracking.</summary>
+        private Quaternion _lastTrackingRot;
+
+        /// <summary>Repère de tracking utilisé à la frame précédente (détecte un changement de rig).</summary>
+        private Transform _lastTrackingSpace;
+
+        /// <summary>
+        /// Vitesse maximale retenue pour un échantillon (m/s). Un bras humain dépasse
+        /// rarement 10 m/s : au-delà, c'est un saut de tracking (perte puis reprise
+        /// de la main), qui sinon projetterait l'objet à l'autre bout de la scène.
+        /// </summary>
+        private const float MaxSampleSpeed = 20f;
+
+        /// <summary>Tampon réutilisé pour les retours haptiques (évite une allocation par vibration).</summary>
+        private static readonly List<XRInputDevice> s_HapticDevices = new List<XRInputDevice>();
 
         // --- Input Actions (secours) -----------------------------------------
 
@@ -340,8 +412,7 @@ namespace RemodelerLeReel.VR
             // Rendu : appelé juste avant chaque image → suivi plus fluide que Update seul.
             Application.onBeforeRender += OnBeforeRenderHand;
 
-            _lastWorldPos = transform.position;
-            _lastWorldRot = transform.rotation;
+            ResetVelocityTracking();
             if (!AllHands.Contains(this)) AllHands.Add(this);
         }
 
@@ -396,6 +467,7 @@ namespace RemodelerLeReel.VR
             SampleHandVelocity();
 
             bool isPressed = IsGrabPressed();
+            IsGrabInputActive = isPressed;
 
             // ARBITRAGE : si le joueur est en train de redimensionner un objet
             // (poignée de la main libre serrée), cette main ne doit PAS
@@ -420,6 +492,12 @@ namespace RemodelerLeReel.VR
                 {
                     ReleaseObject();
                 }
+            }
+
+            // Retour continu si l'objet tenu requiert une vibration continue (ex: moteur, outil actif)
+            if (enableHaptics && _grabbedBody != null && _heldHaptic != null && _heldHaptic.continuousHeldIntensity > 0f)
+            {
+                TriggerHaptic(_heldHaptic.continuousHeldIntensity, Time.deltaTime * 1.5f, 0);
             }
 
             _wasGrabPressed = isPressed;
@@ -449,6 +527,27 @@ namespace RemodelerLeReel.VR
         {
             Vector3 pos;
             Quaternion rot;
+
+            // 0. HAND TRACKING : si la main réelle est suivie, c'est ELLE qui fait foi.
+            // Sans ça, les nœuds de manette renvoient la dernière pose connue de la
+            // manette posée sur la table : la sphère de saisie, l'arc de téléportation
+            // et le menu poignet restaient ancrés au bureau.
+            // Conversion via le repère de tracking (parent de la caméra) et non via le parent
+            // de la manette : dans XROrigin_Menu les manettes et la caméra n'ont pas le même parent.
+            if (VRHandGestures.TryGetPalmPose(handNode, out Pose palm))
+            {
+                Transform space = VRHandGestures.TrackingSpace;
+                if (space != null)
+                {
+                    transform.SetPositionAndRotation(space.TransformPoint(palm.position), space.rotation * palm.rotation);
+                }
+                else
+                {
+                    transform.localPosition = palm.position;
+                    transform.localRotation = palm.rotation;
+                }
+                return;
+            }
 
             // Système de suivi à 4 couches prioritaires :
             // 1. XRNodeStates (Subsystem natif bas niveau OpenXR)
@@ -563,19 +662,7 @@ namespace RemodelerLeReel.VR
             pos = Vector3.zero;
             rot = Quaternion.identity;
 
-            XRInputDevice device = InputDevices.GetDeviceAtXRNode(handNode);
-            if (!device.isValid)
-            {
-                var inputDevices = new List<XRInputDevice>();
-                InputDeviceCharacteristics characteristics = InputDeviceCharacteristics.Controller |
-                    (handNode == XRNode.LeftHand ? InputDeviceCharacteristics.Left : InputDeviceCharacteristics.Right);
-                InputDevices.GetDevicesWithCharacteristics(characteristics, inputDevices);
-                if (inputDevices.Count > 0)
-                {
-                    device = inputDevices[0];
-                }
-            }
-
+            XRInputDevice device = VRStickReader.GetDevice(handNode);
             if (device.isValid)
             {
                 bool hasP = device.TryGetFeatureValue(CommonUsages.devicePosition, out pos);
@@ -640,17 +727,45 @@ namespace RemodelerLeReel.VR
         ///
         /// Le moyennage sur 8 frames sert à lisser le bruit du tracking : sans ça,
         /// le lancer serait haché et amplifié par les micro-tremblements.
+        ///
+        /// ⚠️ REPÈRE DE TRACKING : la vitesse est mesurée en local du Camera Offset
+        /// puis reconvertie en monde. Mesurée directement en monde, une téléportation
+        /// (saut de plusieurs mètres en UNE frame) devenait une vitesse de plusieurs
+        /// centaines de m/s : un objet lâché juste après partait comme un boulet.
+        /// Conséquence assumée : la vitesse de déplacement du joueur n'est pas ajoutée
+        /// au lancer.
         /// </summary>
         private void SampleHandVelocity()
         {
             float dt = Time.deltaTime;
             if (dt <= 0.0001f) return; // dt = 0 → division impossible, on ignore la frame.
 
-            Vector3 velocity = (transform.position - _lastWorldPos) / dt;
-            Quaternion deltaRot = transform.rotation * Quaternion.Inverse(_lastWorldRot);
+            Transform space = VRHandGestures.TrackingSpace;
+            if (space != _lastTrackingSpace)
+            {
+                // Nouveau rig (changement de scène) : l'ancienne référence n'a plus de sens.
+                ResetVelocityTracking();
+                return;
+            }
+
+            GetTrackingPose(space, out Vector3 pos, out Quaternion rot);
+
+            Vector3 localVelocity = (pos - _lastTrackingPos) / dt;
+            if (localVelocity.sqrMagnitude > MaxSampleSpeed * MaxSampleSpeed)
+            {
+                // Saut de tracking : on repart de zéro plutôt que de polluer la moyenne.
+                ResetVelocityTracking();
+                return;
+            }
+
+            Quaternion deltaRot = rot * Quaternion.Inverse(_lastTrackingRot);
             deltaRot.ToAngleAxis(out float angleInDegrees, out Vector3 rotationAxis);
             if (angleInDegrees > 180f) angleInDegrees -= 360f;
-            Vector3 angularVelocity = (angleInDegrees * Mathf.Deg2Rad / dt) * rotationAxis.normalized;
+            Vector3 localAngularVelocity = (angleInDegrees * Mathf.Deg2Rad / dt) * rotationAxis.normalized;
+
+            // Retour en monde avec l'orientation ACTUELLE du rig (gère le snap turn).
+            Vector3 velocity = space != null ? space.TransformVector(localVelocity) : localVelocity;
+            Vector3 angularVelocity = space != null ? space.rotation * localAngularVelocity : localAngularVelocity;
 
             // File circulaire : on retire le plus ancien, on ajoute le nouveau.
             if (_velocitySamples.Count >= VelocitySampleCount) _velocitySamples.Dequeue();
@@ -659,8 +774,35 @@ namespace RemodelerLeReel.VR
             if (_angularVelocitySamples.Count >= VelocitySampleCount) _angularVelocitySamples.Dequeue();
             _angularVelocitySamples.Enqueue(angularVelocity);
 
-            _lastWorldPos = transform.position;
-            _lastWorldRot = transform.rotation;
+            _lastTrackingPos = pos;
+            _lastTrackingRot = rot;
+        }
+
+        /// <summary>Pose de la main exprimée dans le repère de tracking (ou en monde si aucun repère).</summary>
+        private void GetTrackingPose(Transform space, out Vector3 pos, out Quaternion rot)
+        {
+            if (space != null)
+            {
+                pos = space.InverseTransformPoint(transform.position);
+                rot = Quaternion.Inverse(space.rotation) * transform.rotation;
+            }
+            else
+            {
+                pos = transform.position;
+                rot = transform.rotation;
+            }
+        }
+
+        /// <summary>
+        /// Vide l'historique des vitesses et reprend la pose actuelle comme référence.
+        /// Public : à appeler après tout déplacement brusque du rig si besoin.
+        /// </summary>
+        public void ResetVelocityTracking()
+        {
+            _velocitySamples.Clear();
+            _angularVelocitySamples.Clear();
+            _lastTrackingSpace = VRHandGestures.TrackingSpace;
+            GetTrackingPose(_lastTrackingSpace, out _lastTrackingPos, out _lastTrackingRot);
         }
 
         // =====================================================================
@@ -675,19 +817,7 @@ namespace RemodelerLeReel.VR
         private bool IsGrabPressed()
         {
             // 1. XRInputDevice legacy
-            XRInputDevice device = InputDevices.GetDeviceAtXRNode(handNode);
-            if (!device.isValid)
-            {
-                var inputDevices = new List<XRInputDevice>();
-                InputDeviceCharacteristics characteristics = InputDeviceCharacteristics.Controller |
-                    (handNode == XRNode.LeftHand ? InputDeviceCharacteristics.Left : InputDeviceCharacteristics.Right);
-                InputDevices.GetDevicesWithCharacteristics(characteristics, inputDevices);
-                if (inputDevices.Count > 0)
-                {
-                    device = inputDevices[0];
-                }
-            }
-
+            XRInputDevice device = VRStickReader.GetDevice(handNode);
             if (device.isValid)
             {
                 // Touches analogiques (grip / trigger > 0,5)…
@@ -722,6 +852,9 @@ namespace RemodelerLeReel.VR
                 var trigBtn = VRInputControls.Find<UnityEngine.InputSystem.Controls.ButtonControl>(dev, "triggerPressed");
                 if (trigBtn != null && trigBtn.isPressed) return true;
             }
+
+            // 4. Hand Tracking pur : poing fermé ou pincement pouce-index (avec hystérésis)
+            if (VRHandGestures.IsGrabGesture(handNode, _wasGrabPressed)) return true;
 
 #if UNITY_EDITOR
             // Simulation pour l'éditeur : souris (bouton droit = main droite,
@@ -824,8 +957,16 @@ namespace RemodelerLeReel.VR
         /// </summary>
 private void TryGrabClosestObject()
         {
-            Rigidbody target = FindClosestGrabbable();
-            if (target == null) return;
+            GrabBody(FindClosestGrabbable());
+        }
+
+        /// <summary>
+        /// Saisit un objet précis (ex. rendu par la bulle du menu poignet). L'objet reste
+        /// en main jusqu'au prochain relâchement du geste de saisie.
+        /// </summary>
+        public void GrabBody(Rigidbody target)
+        {
+            if (target == null || _grabbedBody != null) return;
 
             // TRANSFERT INTERDIT : on ne vole pas un objet déjà tenu par l'autre
             // main. Le transfert automatique entrait en conflit direct avec le
@@ -871,6 +1012,30 @@ private void TryGrabClosestObject()
 
             _velocitySamples.Clear();
             _angularVelocitySamples.Clear();
+
+            // Son de choc ajouté à la première saisie : tout objet manipulé
+            // « sonne » ensuite quand il retombe, sans réglage objet par objet.
+            if (_grabbedBody.GetComponent<VRSonImpact>() == null)
+            {
+                _grabbedBody.gameObject.AddComponent<VRSonImpact>();
+            }
+            VRSons.Jouer(VRSon.Saisie, transform.position, 1f, VRSons.PitchAleatoire());
+
+            // Profil haptique spécifique de l'objet (ou retour par défaut de la manette)
+            _heldHaptic = _grabbedBody.GetComponent<VRHapticInteractable>() ?? _grabbedBody.GetComponentInParent<VRHapticInteractable>();
+            if (enableHaptics)
+            {
+                if (_heldHaptic != null)
+                {
+                    _heldHaptic.PlayFeedback(this, _heldHaptic.onGrab);
+                }
+                else if (grabHapticIntensity > 0f && grabHapticDuration > 0f)
+                {
+                    TriggerHaptic(grabHapticIntensity, grabHapticDuration, 2);
+                }
+            }
+
+            ObjetSaisi?.Invoke(this, _grabbedBody);
         }
 
         /// <summary>
@@ -931,8 +1096,26 @@ private void TryGrabClosestObject()
                 _grabbedBody.angularVelocity = avgAngVel;
             }
 
+            VRHapticInteractable releasedHaptic = _heldHaptic;
+            Rigidbody releasedBody = _grabbedBody;
             _grabbedBody = null;
             _originalParent = null;
+            _heldHaptic = null;
+
+            if (enableHaptics)
+            {
+                if (releasedHaptic != null)
+                {
+                    releasedHaptic.PlayFeedback(this, releasedHaptic.onRelease);
+                }
+                else if (releaseHapticIntensity > 0f && releaseHapticDuration > 0f)
+                {
+                    TriggerHaptic(releaseHapticIntensity, releaseHapticDuration, 1);
+                }
+            }
+
+            VRSons.Jouer(VRSon.Lacher, transform.position, 1f, VRSons.PitchAleatoire());
+            ObjetLache?.Invoke(this, releasedBody);
         }
 
         // =====================================================================
@@ -965,31 +1148,50 @@ private void TryGrabClosestObject()
 #endif
 
         /// <summary>
-        /// Indique si un périphérique Input System correspond à la main demandée.
-        /// Deux critères testés, dans l'ordre :
-        ///   1. les « usages » déclarés du périphérique contiennent LeftHand / RightHand ;
-        ///   2. à défaut, son NOM contient « left » / « right ».
-        /// Le 2e critère est un filet de sécurité pour les pilotes qui ne déclarent
-        /// pas les usages.
+        /// Déclenche une vibration haptique sur cette manette physique via l'API OpenXR/XR.
         /// </summary>
-        private static bool DeviceMatchesHand(UnityEngine.InputSystem.InputDevice dev, bool isLeft)
+        /// <param name="intensity">Intensité entre 0 et 1.</param>
+        /// <param name="duration">Durée de l'impulsion en secondes.</param>
+        /// <param name="priority">Niveau de priorité (un feedback de priorité inférieure n'écrase pas une vibration en cours).</param>
+        public void TriggerHaptic(float intensity, float duration, int priority = 1)
         {
-            if (dev == null || !dev.added) return false;
+            if (!enableHaptics || intensity <= 0f || duration <= 0f) return;
 
-            string targetUsage = isLeft ? "LeftHand" : "RightHand";
-            string targetName = isLeft ? "left" : "right";
-
-            var usages = dev.usages;
-            for (int j = 0; j < usages.Count; j++)
+            // Arbitrage par priorité : si une vibration de priorité supérieure est encore active, on refuse
+            if (Time.time < _hapticEndTime && priority < _currentHapticPriority)
             {
-                if (usages[j].ToString().IndexOf(targetUsage, System.StringComparison.OrdinalIgnoreCase) >= 0)
-                    return true;
+                return;
             }
 
-            if (dev.name.IndexOf(targetName, System.StringComparison.OrdinalIgnoreCase) >= 0)
-                return true;
+            _currentHapticPriority = priority;
+            _hapticEndTime = Time.time + duration;
 
-            return false;
+            // 1. Essai direct via l'API InputDevice (Standard OpenXR)
+            XRInputDevice device = VRStickReader.GetDevice(handNode);
+            if (device.isValid && device.SendHapticImpulse(0, Mathf.Clamp01(intensity), duration))
+            {
+                return;
+            }
+
+            // 2. Repli de recherche par caractéristiques si le mapping XRNode est incomplet
+            s_HapticDevices.Clear();
+            InputDeviceCharacteristics characteristics = InputDeviceCharacteristics.Controller |
+                (handNode == XRNode.LeftHand ? InputDeviceCharacteristics.Left : InputDeviceCharacteristics.Right);
+            InputDevices.GetDevicesWithCharacteristics(characteristics, s_HapticDevices);
+            for (int i = 0; i < s_HapticDevices.Count; i++)
+            {
+                if (s_HapticDevices[i].isValid && s_HapticDevices[i].SendHapticImpulse(0, Mathf.Clamp01(intensity), duration))
+                {
+                    return;
+                }
+            }
         }
+
+        /// <summary>
+        /// Indique si un périphérique Input System correspond à la main demandée.
+        /// Délègue à <see cref="VRStickReader.DeviceMatchesHand"/> (implémentation unique).
+        /// </summary>
+        private static bool DeviceMatchesHand(UnityEngine.InputSystem.InputDevice dev, bool isLeft)
+            => VRStickReader.DeviceMatchesHand(dev, isLeft);
     }
 }

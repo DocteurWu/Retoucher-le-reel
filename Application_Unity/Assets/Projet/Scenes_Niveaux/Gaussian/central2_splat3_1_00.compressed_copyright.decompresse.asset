@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33b71fae31e6c7d438e8566dc713e666, type: 3}
+  m_Name: central2_splat3_1_00.compressed_copyright.decompresse
+  m_EditorClassIdentifier: 
+  m_FormatVersion: 20231020
+  m_SplatCount: 991089
+  m_BoundsMin: {x: -19.853304, y: -27.850437, z: -15.25568}
+  m_BoundsMax: {x: 37.52233, y: 14.356121, z: 15.248507}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: 24fed5395395cb1b0b3f0cb88275b777
+  m_PosFormat: 2
+  m_ScaleFormat: 2
+  m_SHFormat: 3
+  m_ColorFormat: 2
+  m_PosData: {fileID: 4900000, guid: 42860ceebb0e13943a34a21139a512e9, type: 3}
+  m_ColorData: {fileID: 4900000, guid: 23e029aa138854a4d82f968128aa9513, type: 3}
+  m_OtherData: {fileID: 4900000, guid: da6b541a2a05ca94cbd79626d833e826, type: 3}
+  m_SHData: {fileID: 4900000, guid: edd46d2c60cc4c349b9574b1a0336418, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: be69f6ef0cbbca746869f98255108854, type: 3}
+  m_Cameras: []

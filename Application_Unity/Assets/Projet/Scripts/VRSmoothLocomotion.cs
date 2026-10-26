@@ -50,7 +50,7 @@ namespace RemodelerLeReel.VR
         [Header("--- Deplacement (Stick Gauche) ---")]
         [Range(0.1f, 5f)] public float moveSpeed = 2f;
         [Range(0.1f, 5f)] public float strafeSpeed = 1.5f;
-        [Range(0f, 0.5f)] public float deadzone = 0.15f;
+        [Range(0f, 0.5f)] public float deadzone = 0.25f;
         public XRNode moveStickNode = XRNode.LeftHand;
         [Tooltip("Force le mouvement continu dans la scene meme si Teleport etait enregistre")]
         public bool forceSmooth = false;
@@ -266,11 +266,18 @@ namespace RemodelerLeReel.VR
                 _isGrounded = false;
             }
 
-            xrOriginTransform.position = originPos;
+            // Physics.SyncTransforms inclus : les colliders des objets tenus suivent le rig.
+            if (originPos != xrOriginTransform.position) VRUtils.MoveRig(xrOriginTransform, originPos);
         }
 
         private void HandleHorizontalMovement()
         {
+            // En mode mains (Hand Tracking), le joueur utilise UNIQUEMENT la téléportation
+            if (VRModalityManager.IsHandMode)
+            {
+                return;
+            }
+
             // Ne se deplace pas horizontalement si une teleportation est en cours de visee
             if (VRTeleportation.IsAiming)
             {

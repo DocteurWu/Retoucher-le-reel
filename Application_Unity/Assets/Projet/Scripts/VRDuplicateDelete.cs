@@ -237,6 +237,12 @@ namespace RemodelerLeReel.VR
         /// <summary>Source de lecture des retours sonores (créée si nécessaire).</summary>
         private AudioSource _audio;
 
+        /// <summary>Un clone vient d'être créé (original, clone). Écouté par la narration.</summary>
+        public static event System.Action<Rigidbody, GameObject> ObjetDuplique;
+
+        /// <summary>Un objet va être détruit (appelé juste avant Destroy). Écouté par la narration.</summary>
+        public static event System.Action<Rigidbody> ObjetSupprime;
+
         // =====================================================================
         // INITIALISATION
         // =====================================================================
@@ -281,6 +287,10 @@ namespace RemodelerLeReel.VR
             _wasDuplicatePressed = duplicatePressed;
             _wasDeletePressed = deletePressed;
 
+            // En mode mains, les boutons X/Y « physiques » sont des faux appuis générés par
+            // l'émulation de gestes (ALVR / SteamVR) : seul le menu poignet fait foi.
+            if (VRModalityManager.IsHandMode) return;
+
             if (!duplicateEdge && !deleteEdge) return;
 
             if (!TryGetHeldObject(out VRGrabHand holderHand, out Rigidbody body))
@@ -300,6 +310,36 @@ namespace RemodelerLeReel.VR
             else TryDelete(holderHand, body);
         }
 
+        /// <summary>
+        /// Déclenche la duplication de l'objet actuellement tenu (appelable depuis un bouton UI ou Hand Menu).
+        /// </summary>
+        public void DuplicateHeldObject()
+        {
+            if (TryGetHeldObject(out VRGrabHand holderHand, out Rigidbody body))
+            {
+                TryDuplicate(holderHand, body);
+            }
+            else if (logDebug)
+            {
+                Debug.Log("[VRDuplicateDelete] Action UI Dupliquer ignorée : aucun objet n'est tenu.", this);
+            }
+        }
+
+        /// <summary>
+        /// Déclenche la suppression de l'objet actuellement tenu (appelable depuis un bouton UI ou Hand Menu).
+        /// </summary>
+        public void DeleteHeldObject()
+        {
+            if (TryGetHeldObject(out VRGrabHand holderHand, out Rigidbody body))
+            {
+                TryDelete(holderHand, body);
+            }
+            else if (logDebug)
+            {
+                Debug.Log("[VRDuplicateDelete] Action UI Supprimer ignorée : aucun objet n'est tenu.", this);
+            }
+        }
+
         // =====================================================================
         // RÉSOLUTION DE LA MAIN ET DE L'OBJET TENU
         // =====================================================================
@@ -315,13 +355,14 @@ namespace RemodelerLeReel.VR
             if (_selfHand == null || !_selfHand.isActiveAndEnabled) _selfHand = GetComponent<VRGrabHand>();
             if (_otherHand != null && _otherHand.isActiveAndEnabled) return;
 
-            VRGrabHand[] hands = FindObjectsByType<VRGrabHand>(FindObjectsSortMode.None);
+            // Registre VRGrabHand.AllHands : pas de parcours de scène.
+            var hands = VRGrabHand.AllHands;
             XRNode selfNode = _selfHand != null ? _selfHand.handNode : handNode;
 
             _otherHand = null;
 
             // 1) une AUTRE manette portant un handNode différent (cas normal).
-            for (int i = 0; i < hands.Length; i++)
+            for (int i = 0; i < hands.Count; i++)
             {
                 if (hands[i] == null || hands[i].transform == transform) continue;
                 if (hands[i].handNode != selfNode)
@@ -333,7 +374,7 @@ namespace RemodelerLeReel.VR
 
             // 2) secours : n'importe quelle autre manette, même si son handNode est mal
             //    renseigné. Mieux vaut détecter la seconde main que ne rien faire.
-            for (int i = 0; i < hands.Length; i++)
+            for (int i = 0; i < hands.Count; i++)
             {
                 if (hands[i] != null && hands[i].transform != transform)
                 {
@@ -516,7 +557,9 @@ GameObject source = (marker != null && marker.duplicationPrefab != null)
                     "il ne sera pas saisissable par la main.", clone);
             }
 
-            PlayAudio(duplicateClip);
+            PlayAudio(duplicateClip, VRSon.Duplication, worldPosition);
+            ObjetDuplique?.Invoke(body, clone);
+            hand?.TriggerHaptic(0.65f, 0.12f, 3); // Impulsion haptique de duplication (pop)
 
             // SPAWN DU CLONE : on Capture explicitement le point de rappel
             // maintenant qu'il est à sa position finale. Sans cet appel, le
@@ -625,13 +668,13 @@ GameObject source = (marker != null && marker.duplicationPrefab != null)
         /// référence vers un objet détruit (« missing reference ») et lèverait une
         /// erreur à son prochain relâchement. On détruit ensuite le GameObject.
         /// </summary>
-        private void TryDelete(VRGrabHand hand, Rigidbody body)
+        private bool TryDelete(VRGrabHand hand, Rigidbody body)
         {
             VRDuplicable marker = body.GetComponent<VRDuplicable>();
             if (marker != null && !marker.deletionEnabled)
             {
                 if (logDebug) Debug.Log("[VRDuplicateDelete] Suppression bloquée par VRDuplicable sur « " + body.name + " ».", this);
-                return;
+                return false;
             }
 
             // GARDE-FOU DERNIER EXEMPLAIRE : on refuse de supprimer l'unique
@@ -646,15 +689,30 @@ GameObject source = (marker != null && marker.duplicationPrefab != null)
                         "[VRDuplicateDelete] Suppression refusée : « " + body.name + " » est le " +
                         "dernier exemplaire. La scène deviendrait vide ; duplique-le d'abord " +
                         "ou désactive « Protéger le dernier exemplaire ».", this);
-                    return;
+                    return false;
                 }
             }
 
             hand?.ReleaseObject(applyThrowVelocity: false);
 
-            PlayAudio(deleteClip);
+            PlayAudio(deleteClip, VRSon.Suppression, body.transform.position);
+            ObjetSupprime?.Invoke(body);
+            hand?.TriggerHaptic(0.8f, 0.18f, 3); // Impulsion haptique de suppression (choc sec)
             if (logDebug) Debug.Log("[VRDuplicateDelete] Suppression de « " + body.name + " » (bouton " + deleteButton + ").", this);
             Destroy(body.gameObject);
+            return true;
+        }
+
+        /// <summary>Duplique un objet qui n'est tenu par aucune main (ex. rangé dans la bulle du menu poignet).</summary>
+        public void DuplicateBody(Rigidbody body)
+        {
+            if (body != null) TryDuplicate(null, body);
+        }
+
+        /// <summary>Supprime un objet non tenu. Renvoie faux si la suppression est refusée.</summary>
+        public bool DeleteBody(Rigidbody body)
+        {
+            return body != null && TryDelete(null, body);
         }
 
         // =====================================================================
@@ -678,63 +736,19 @@ GameObject source = (marker != null && marker.duplicationPrefab != null)
             return VRButtonReader.Read((VRButton)button);
         }
 
-        /// <summary>
-        /// Retrouve la manette correspondant à un nœud XR.
-        ///
-        /// <see cref="InputDevices.GetDeviceAtXRNode(XRNode)"/> renvoie
-        /// fréquemment un device INVALIDE selon le runtime (notamment OpenXR).
-        /// On replie donc, exactement comme le fait la saisie de
-        /// <c>VRGrabHand</c>, sur une recherche par caractéristiques
-        /// « Controlleur + main ». Sans ce repli, les boutons X/Y n'étaient
-        /// simplement jamais lus.
-        /// </summary>
-        private static XRInputDevice GetControllerDevice(XRNode node)
-        {
-            XRInputDevice device = InputDevices.GetDeviceAtXRNode(node);
-            if (device.isValid) return device;
-
-            InputDeviceCharacteristics characteristics =
-                InputDeviceCharacteristics.Controller |
-                (node == XRNode.LeftHand ? InputDeviceCharacteristics.Left : InputDeviceCharacteristics.Right);
-
-            var found = new List<XRInputDevice>();
-            InputDevices.GetDevicesWithCharacteristics(characteristics, found);
-            return found.Count > 0 ? found[0] : default;
-        }
-
-        /// <summary>
-        /// Identifie le périphérique Input System correspondant à une main : d'abord via
-        /// ses usages (LeftHand / RightHand), en secours via son nom ("Oculus Touch
-        /// Left", "Index Left"...).
-        /// </summary>
-        private static bool DeviceMatchesHand(InputDevice dev, bool isLeft)
-        {
-            if (dev == null || !dev.added) return false;
-
-            string targetUsage = isLeft ? "LeftHand" : "RightHand";
-            string targetName = isLeft ? "left" : "right";
-
-            var usages = dev.usages;
-            for (int i = 0; i < usages.Count; i++)
-            {
-                if (usages[i].ToString().IndexOf(targetUsage, System.StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    return true;
-                }
-            }
-
-            return dev.name.IndexOf(targetName, System.StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
         // =====================================================================
         // SON
         // =====================================================================
 
-        /// <summary>Joue un des deux retours sonores, s'il est renseigné.</summary>
-        private void PlayAudio(AudioClip clip)
+        /// <summary>Joue le clip renseigné, ou à défaut le son procédural de <see cref="VRSons"/>.</summary>
+        private void PlayAudio(AudioClip clip, VRSon repli, Vector3 position)
         {
-            if (clip == null || _audio == null) return;
-            _audio.PlayOneShot(clip, volume);
+            if (clip != null && _audio != null)
+            {
+                _audio.PlayOneShot(clip, volume);
+                return;
+            }
+            VRSons.Jouer(repli, position);
         }
     }
 }

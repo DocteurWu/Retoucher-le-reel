@@ -42,6 +42,20 @@ namespace RemodelerLeReel.VR
     }
 
     /// <summary>
+    /// DÉPLACEMENT EN MODE MAINS (suivi des mains, sans manette). Un seul des deux à
+    /// la fois : le poing fermé sert aux deux gestes, ils se gêneraient.
+    /// La rotation (glissement du pouce sur l'index) marche dans les deux modes.
+    /// </summary>
+    public enum HandLocomotionMode
+    {
+        /// <summary>Microgeste Meta : tap du pouce sur l'index = arc, 2e tap = départ.</summary>
+        Teleport = 0,
+
+        /// <summary>Escalade : poing fermé main vide puis tirer.</summary>
+        Climb = 1
+    }
+
+    /// <summary>
     /// RÉGLAGES DE LOCOMOTION — état de session partagé entre le menu et le jeu.
     ///
     /// Le menu écrit le mode choisi, la scène de jeu le lit au chargement.
@@ -84,6 +98,46 @@ namespace RemodelerLeReel.VR
 
         /// <summary>Nombre de modes disponibles.</summary>
         public const int ModeCount = 2;
+
+        // --- Mode MAINS ------------------------------------------------------------
+
+        /// <summary>Mode mains appliqué au premier lancement.</summary>
+        public const HandLocomotionMode DefaultHandMode = HandLocomotionMode.Teleport;
+
+        private const string HandPrefsKey = "RemodelerLeReel_HandLocomotionMode";
+        private static HandLocomotionMode? _cachedHandMode;
+
+        /// <summary>Déplacement en mode mains (persisté comme <see cref="Mode"/>).</summary>
+        public static HandLocomotionMode HandMode
+        {
+            get
+            {
+                if (!_cachedHandMode.HasValue)
+                {
+                    _cachedHandMode = (HandLocomotionMode)PlayerPrefs.GetInt(HandPrefsKey, (int)DefaultHandMode);
+                }
+                return _cachedHandMode.Value;
+            }
+            set
+            {
+                _cachedHandMode = value;
+                PlayerPrefs.SetInt(HandPrefsKey, (int)value);
+                PlayerPrefs.Save();
+            }
+        }
+
+        /// <summary>Passe au mode mains suivant et le renvoie.</summary>
+        public static HandLocomotionMode CycleHand()
+        {
+            HandMode = HandMode == HandLocomotionMode.Teleport ? HandLocomotionMode.Climb : HandLocomotionMode.Teleport;
+            return HandMode;
+        }
+
+        /// <summary>Libellé lisible du mode mains (FR).</summary>
+        public static string HandLabel(HandLocomotionMode mode)
+        {
+            return mode == HandLocomotionMode.Teleport ? "Téléportation (mains)" : "Escalade (mains)";
+        }
 
         /// <summary>Passe au mode suivant et renvoie le nouveau mode.</summary>
         public static LocomotionMode Cycle()

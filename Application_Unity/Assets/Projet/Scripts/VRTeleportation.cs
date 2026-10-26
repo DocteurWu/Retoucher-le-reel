@@ -32,6 +32,17 @@ using XRInputDevice = UnityEngine.XR.InputDevice;
 
 namespace RemodelerLeReel.VR
 {
+    /// <summary>Geste de téléportation en mode mains.</summary>
+    public enum HandTeleportGesture
+    {
+        /// <summary>Signe du pistolet main gauche + visée stable (2 s).</summary>
+        PistoletGauche,
+        /// <summary>Microgeste Meta : poing droit, tap du pouce sur l'index pour viser puis confirmer.</summary>
+        MicrogesteDroit,
+        /// <summary>Les deux gestes sont actifs.</summary>
+        LesDeux
+    }
+
     /// <summary>
     /// TÉLÉPORTATION VR par trajectoire balistique (arc parabolique).
     ///
@@ -90,10 +101,18 @@ namespace RemodelerLeReel.VR
         public XRNode handNode = XRNode.LeftHand;
 
         /// <summary>Seuil d'activation : stick poussé au-delà de cette valeur → on vise.</summary>
-        public float activationThreshold = 0.5f;
+        [Tooltip("Seuil de déclenchement du joystick (plus haut = moins sensible aux fausses manips)")]
+        public float activationThreshold = 0.75f;
 
         /// <summary>Seuil de relâchement : stick ramené sous cette valeur → on téléporte.</summary>
-        public float releaseThreshold = 0.2f;
+        [Tooltip("Seuil de relâchement du joystick pour valider")]
+        public float releaseThreshold = 0.35f;
+
+        /// <summary>Durée minimale de visée (secondes) avant de pouvoir valider la téléportation.</summary>
+        [Tooltip("Temps de maintien minimum de la visée pour éviter les à-coups")]
+        public float minAimDuration = 0.18f;
+
+        private float _aimDuration = 0f;
 
         // ---------------------------------------------------------------------
         // CALIBRAGE DE LA VISÉE
@@ -231,9 +250,6 @@ namespace RemodelerLeReel.VR
             IsAiming = false;
         }
 
-        /// <summary>Liste de périphériques réutilisée (évite une allocation par frame).</summary>
-        private readonly List<XRInputDevice> _deviceBuffer = new List<XRInputDevice>(4);
-
         /// <summary>
         /// Points de l'arc réutilisés d'une frame à l'autre. La capacité est
         /// préallouée à maxArcPoints pour ne jamais.resize() pendant la visée.
@@ -300,8 +316,10 @@ namespace RemodelerLeReel.VR
         /// </summary>
         private void Update()
         {
-            // Vérification du mode de locomotion configuré dans le menu
-            if (VRLocomotionSettings.Mode != LocomotionMode.Teleport)
+            // Vérification du mode de locomotion configuré dans le menu.
+            // En mode MAINS la téléportation est toujours disponible : le déplacement
+            // continu (défaut « Smooth ») exige un stick, inexistant sans manette.
+            if (VRLocomotionSettings.Mode != LocomotionMode.Teleport && !VRModalityManager.IsHandMode)
             {
                 if (IsAiming)
                 {
@@ -312,17 +330,18 @@ namespace RemodelerLeReel.VR
             }
 
             // Auto-recherche du contrôleur si non renseigné
+            // (registre VRGrabHand.AllHands : pas de parcours de scène à chaque frame)
             if (rayOrigin == null)
             {
-                var hands = FindObjectsByType<VRGrabHand>(FindObjectsSortMode.None);
-                foreach (var h in hands)
-                {
-                    if (h.handNode == handNode)
-                    {
-                        rayOrigin = h.transform;
-                        break;
-                    }
-                }
+                var hand = VRGrabHand.GetHandForNode(handNode);
+                if (hand != null) rayOrigin = hand.transform;
+            }
+
+            // En mode MAINS : utiliser la téléportation par visée et geste franc (ignore les sticks fantômes)
+            if (VRModalityManager.IsHandMode)
+            {
+                UpdateHandTrackingTeleport();
+                return;
             }
 
             Vector2 stick = ReadThumbstick();
@@ -334,26 +353,273 @@ namespace RemodelerLeReel.VR
             if (!IsAiming && !stickReserved && stick.y > activationThreshold)
             {
                 IsAiming = true;
+                _aimDuration = 0f;
                 SetVisualsActive(true);
             }
 
             if (IsAiming)
             {
+                _aimDuration += Time.deltaTime;
                 // On recalcule la parabole en continu : la cible bouge avec le joueur.
                 UpdateArcAndTarget();
 
                 // Relâcher le stick (ou le perdre au profit de l'échelle) téléporte.
                 if (stick.y < releaseThreshold || stickReserved)
                 {
-                    // On ne téléporte QUE si la destination a été validée (sol plat).
-                    if (_hasValidTarget && !stickReserved)
+                    // On ne téléporte QUE si la destination a été validée ET maintenue assez longtemps
+                    if (_hasValidTarget && !stickReserved && _aimDuration >= minAimDuration)
                     {
                         PerformTeleport(_targetPosition);
                     }
 
                     IsAiming = false;
+                    _aimDuration = 0f;
                     SetVisualsActive(false);
                 }
+            }
+        }
+
+        [Header("Téléportation aux Mains (Hand Tracking)")]
+        [Tooltip("Geste de téléportation en mode mains. Microgeste = comme Meta : main droite en poing lâche, "
+                 + "le pouce tape sur le côté de l'index une fois pour viser, une seconde fois pour partir.")]
+        public HandTeleportGesture handTeleportGesture = HandTeleportGesture.MicrogesteDroit;
+
+        [Tooltip("Microgeste : distance pouce ↔ côté de l'index (m) en dessous de laquelle le « bouton » est appuyé.")]
+        [Range(0.01f, 0.04f)] public float microPressDistance = 0.022f;
+
+        [Tooltip("Microgeste : distance (m) au-delà de laquelle le « bouton » est relâché (doit être > appui).")]
+        [Range(0.02f, 0.06f)] public float microReleaseDistance = 0.035f;
+
+        [Tooltip("Microgeste : temps (s) pendant lequel on tolère la perte du poing avant d'annuler la visée.")]
+        [Range(0.1f, 1.5f)] public float microPoseGrace = 0.4f;
+
+        [Tooltip("Microgeste : glissement latéral du pouce (m) qui vaut un cran de rotation (lu par VRSnapTurn).")]
+        [Range(0.005f, 0.04f)] public float microSwipeDistance = 0.015f;
+
+        [Tooltip("Durée de maintien du grab main gauche (secondes) sans objet avant d'activer la visée")]
+        [Range(1f, 4f)] public float handGrabActivationDelay = 2.0f;
+
+        [Tooltip("Durée (s) de visée stable avec le pistolet main gauche avant de téléporter (l'arc s'affiche immédiatement)")]
+        [Range(0.5f, 6f)] public float handGunConfirmTime = 2.0f;
+
+        [Tooltip("Déplacement max (m) de la cible pendant la confirmation avant de relancer le compteur")]
+        public float handGunConfirmRadius = 0.35f;
+
+        private float _gunConfirmTimer;
+        private Vector3 _gunConfirmAnchor;
+        private bool _gunNeedsRelease;
+
+        private const float HandGunGrace = 0.25f;
+        private float _lastGunTime = -999f;
+        private Vector3 _gunAimPos;
+        private Vector3 _gunAimDir = Vector3.forward;
+        private bool _useGunAim;
+
+        private float _handGrabTimer = 0f;
+
+        /// <summary>Geste qui pilote la visée en cours (un seul à la fois).</summary>
+        private enum HandAimSource { None, Gun, Micro }
+        private HandAimSource _handAimSource;
+
+        private float _lastMicroPoseTime = -999f;
+
+        /// <summary>
+        /// Vérifie si la main gauche maintient un geste de saisie (poing / grab / pinch)
+        /// SANS tenir d'objet dans la main.
+        /// </summary>
+        private bool IsLeftHandGrabbingWithoutObject()
+        {
+            // 1. Si un objet est tenu par la main gauche, aucune téléportation ne doit s'activer
+            var leftGrab = VRGrabHand.GetHandForNode(XRNode.LeftHand);
+            if (leftGrab != null && leftGrab.IsHoldingObject)
+            {
+                return false;
+            }
+
+            // 2. État de grab rapporté par VRGrabHand
+            if (leftGrab != null && leftGrab.IsGrabInputActive)
+            {
+                return true;
+            }
+
+            // 3. Détection directe XRHandSubsystem (poing fermé ou pincement index/majeur)
+            // Hystérésis : une fois le geste engagé (minuterie ou visée), on le garde
+            // avec des seuils plus bas pour ne pas annuler la visée au moindre tremblement.
+            if (VRHandGestures.IsGrabGesture(XRNode.LeftHand, IsAiming || _handGrabTimer > 0f))
+            {
+                return true;
+            }
+
+            // 4. Manette gauche (secours si manette utilisée)
+            XRInputDevice dev = VRStickReader.GetDevice(XRNode.LeftHand);
+            if (dev.isValid)
+            {
+                if (dev.TryGetFeatureValue(CommonUsages.grip, out float grip) && grip > 0.5f) return true;
+                if (dev.TryGetFeatureValue(CommonUsages.trigger, out float trig) && trig > 0.5f) return true;
+            }
+
+            return false;
+        }
+
+        private void UpdateHandTrackingTeleport()
+        {
+            if (headCamera == null) return;
+
+            // Réglages d'Inspector → détecteur partagé (aussi lu par VRSnapTurn).
+            VRThumbMicrogestures.PressDistance = microPressDistance;
+            VRThumbMicrogestures.ReleaseDistance = microReleaseDistance;
+            VRThumbMicrogestures.SwipeDistance = microSwipeDistance;
+
+            // Mode « Escalade » choisi dans le menu : pas de téléportation aux mains.
+            if (VRLocomotionSettings.HandMode != HandLocomotionMode.Teleport)
+            {
+                if (IsAiming) StopHandAim();
+                return;
+            }
+
+            // Les deux gestes coexistent, mais une visée commencée par l'un ne peut
+            // pas être annulée ou confirmée par l'autre.
+            if (handTeleportGesture != HandTeleportGesture.PistoletGauche && _handAimSource != HandAimSource.Gun)
+            {
+                UpdateMicrogestureTeleport();
+            }
+            if (handTeleportGesture != HandTeleportGesture.MicrogesteDroit && _handAimSource != HandAimSource.Micro)
+            {
+                UpdateGunTeleport();
+            }
+        }
+
+        /// <summary>
+        /// MICROGESTE (main droite, façon Meta) :
+        ///   1. poing lâche, le pouce tape sur le côté de l'index → l'arc apparaît ;
+        ///   2. on vise avec le poing (axe poignet → jointures) ;
+        ///   3. second tap → téléportation si la cible est valide (sinon annulation).
+        /// Ouvrir la main plus de <see cref="microPoseGrace"/> s annule la visée.
+        /// </summary>
+        private void UpdateMicrogestureTeleport()
+        {
+            // Perte fugitive du suivi pendant la visée : on gèle l'état.
+            if (_handAimSource == HandAimSource.Micro && !VRHandGestures.IsTracked(XRNode.RightHand)) return;
+
+            var rightGrab = VRGrabHand.GetHandForNode(XRNode.RightHand);
+            bool holding = rightGrab != null && rightGrab.IsHoldingObject;
+            bool pose = VRThumbMicrogestures.TryGetAim(XRNode.RightHand, out Vector3 aimPos, out Vector3 aimDir) && !holding;
+            if (pose)
+            {
+                _lastMicroPoseTime = Time.time;
+                _gunAimPos = aimPos;
+                _gunAimDir = aimDir;
+            }
+
+            // Tap = pouce posé puis relevé SANS glisser (un glissement = rotation).
+            bool tap = pose && VRThumbMicrogestures.TapThisFrame(XRNode.RightHand);
+
+            if (_handAimSource != HandAimSource.Micro)
+            {
+                if (!tap) return;
+                _handAimSource = HandAimSource.Micro;
+                IsAiming = true;
+                _aimDuration = 0f;
+                SetVisualsActive(true);
+                // Pas de vibration sans manette : un petit son confirme le clic.
+                VRSons.Jouer(VRSon.Saisie, aimPos, 0.6f, 1.3f);
+                return;
+            }
+
+            if (Time.time - _lastMicroPoseTime > microPoseGrace)
+            {
+                StopHandAim();
+                return;
+            }
+
+            _aimDuration += Time.deltaTime;
+            _useGunAim = true;
+            UpdateArcAndTarget();
+            _useGunAim = false;
+
+            if (tap && _aimDuration >= minAimDuration)
+            {
+                if (_hasValidTarget) PerformTeleport(_targetPosition);
+                StopHandAim();
+            }
+        }
+
+        /// <summary>Range l'arc et libère la visée mains.</summary>
+        private void StopHandAim()
+        {
+            IsAiming = false;
+            _aimDuration = 0f;
+            _gunConfirmTimer = 0f;
+            _handAimSource = HandAimSource.None;
+            SetVisualsActive(false);
+        }
+
+        /// <summary>
+        /// SIGNE DU PISTOLET (main gauche) : arc immédiat, téléportation après
+        /// <see cref="handGunConfirmTime"/> s de visée stable.
+        /// </summary>
+        private void UpdateGunTeleport()
+        {
+            // Perte fugitive du suivi pendant la visée : on gèle l'état.
+            if (IsAiming && !VRHandGestures.IsTracked(XRNode.LeftHand)) return;
+
+            // Geste : SIGNE DU PISTOLET main gauche, main vide. L'arc apparaît
+            // IMMÉDIATEMENT ; la téléportation se déclenche après handGunConfirmTime
+            // secondes de visée stable sur la même zone. Relâcher la posture annule.
+            var leftGrab = VRGrabHand.GetHandForNode(XRNode.LeftHand);
+            bool holding = leftGrab != null && leftGrab.IsHoldingObject;
+            bool gun = VRHandGestures.TryGetFingerGun(XRNode.LeftHand, out Vector3 gunPos, out Vector3 gunDir, out _) && !holding;
+            if (gun)
+            {
+                _lastGunTime = Time.time;
+                _gunAimPos = gunPos;
+                _gunAimDir = gunDir;
+            }
+            bool gunHeld = gun || (Time.time - _lastGunTime) < HandGunGrace;
+
+            if (!gunHeld)
+            {
+                _gunNeedsRelease = false;
+                if (IsAiming) StopHandAim();
+                return;
+            }
+
+            // Après une téléportation, il faut défaire puis refaire le pistolet.
+            if (_gunNeedsRelease) return;
+
+            if (!IsAiming)
+            {
+                IsAiming = true;
+                _handAimSource = HandAimSource.Gun;
+                _aimDuration = 0f;
+                _gunConfirmTimer = 0f;
+                SetVisualsActive(true);
+            }
+
+            _aimDuration += Time.deltaTime;
+            _useGunAim = true;
+            UpdateArcAndTarget();
+            _useGunAim = false;
+
+            if (!_hasValidTarget)
+            {
+                _gunConfirmTimer = 0f;
+                return;
+            }
+
+            // Confirmation : la cible doit rester dans un rayon de tolérance.
+            if (_gunConfirmTimer <= 0f || Vector3.Distance(_targetPosition, _gunConfirmAnchor) > handGunConfirmRadius)
+            {
+                _gunConfirmAnchor = _targetPosition;
+                _gunConfirmTimer = 0f;
+            }
+            _gunConfirmTimer += Time.deltaTime;
+
+            if (_gunConfirmTimer >= handGunConfirmTime)
+            {
+                PerformTeleport(_targetPosition);
+                StopHandAim();
+                _gunNeedsRelease = true;
             }
         }
 
@@ -367,21 +633,8 @@ namespace RemodelerLeReel.VR
         /// </summary>
         private Vector2 ReadThumbstick()
         {
-            // 1. Essai via XR InputDevice (buffer réutilisé : 0 allocation par frame)
-            XRInputDevice device = InputDevices.GetDeviceAtXRNode(handNode);
-            if (!device.isValid)
-            {
-                // Nœud non résolu → recherche par caractéristiques (contrôleur + côté).
-                _deviceBuffer.Clear();
-                InputDeviceCharacteristics characteristics = InputDeviceCharacteristics.Controller |
-                    (handNode == XRNode.LeftHand ? InputDeviceCharacteristics.Left : InputDeviceCharacteristics.Right);
-                InputDevices.GetDevicesWithCharacteristics(characteristics, _deviceBuffer);
-                if (_deviceBuffer.Count > 0)
-                {
-                    device = _deviceBuffer[0];
-                }
-            }
-
+            // 1. Essai via XR InputDevice (repli par caractéristiques inclus, 0 allocation)
+            XRInputDevice device = VRStickReader.GetDevice(handNode);
             if (device.isValid && device.TryGetFeatureValue(CommonUsages.primary2DAxis, out Vector2 axis))
             {
                 return axis;
@@ -403,10 +656,7 @@ namespace RemodelerLeReel.VR
                 var dev = devices[i];
                 if (!dev.added) continue;
 
-                bool isTarget = isLeft
-                    ? (dev.usages.Contains(UnityEngine.InputSystem.CommonUsages.LeftHand) || dev.name.ToLower().Contains("left"))
-                    : (dev.usages.Contains(UnityEngine.InputSystem.CommonUsages.RightHand) || dev.name.ToLower().Contains("right"));
-                if (!isTarget) continue;
+                if (!VRStickReader.DeviceMatchesHand(dev, isLeft)) continue;
 
                 var stick = VRInputControls.FindAny<UnityEngine.InputSystem.Controls.Vector2Control>(
                     dev, "thumbstick", "primary2DAxis", "stick");
@@ -471,6 +721,12 @@ namespace RemodelerLeReel.VR
 
             Vector3 startPos = aimTransform.position;
             Vector3 aimDirection = Quaternion.Euler(aimEulerCorrection) * aimTransform.forward;
+            if (_useGunAim)
+            {
+                // Hand tracking : l'arc part du bout de l'index, dans l'axe du doigt.
+                startPos = _gunAimPos;
+                aimDirection = _gunAimDir;
+            }
 
             // Conditions initiales de la balle : elle part de la main et part vers l'avant.
             Vector3 startVelocity = aimDirection.normalized * initialVelocity;
@@ -570,6 +826,9 @@ namespace RemodelerLeReel.VR
         // ACTION : TÉLÉPORTATION
         // =====================================================================
 
+        /// <summary>Le joueur vient d'être téléporté (point visé). Écouté par la narration.</summary>
+        public static event System.Action<Vector3> Teleporte;
+
         /// <summary>
         /// Déplace l'XR Origin pour que la TÊTE du joueur arrive exactement sur la cible.
         ///
@@ -598,7 +857,17 @@ namespace RemodelerLeReel.VR
                 destination.z - cameraOffset.z
             );
 
-            xrOriginTransform.position = newPosition;
+            // Déplacement + Physics.SyncTransforms : les colliders des objets tenus
+            // (enfants des mains) suivent immédiatement le rig.
+            VRUtils.MoveRig(xrOriginTransform, newPosition);
+            VRSons.Jouer(VRSon.Teleportation, null, 1f, VRSons.PitchAleatoire(0.04f));
+            Teleporte?.Invoke(destination);
+
+            // Le saut du rig ne doit pas compter comme un geste de lancer.
+            for (int i = 0; i < VRGrabHand.AllHands.Count; i++)
+            {
+                if (VRGrabHand.AllHands[i] != null) VRGrabHand.AllHands[i].ResetVelocityTracking();
+            }
         }
 
         // =====================================================================
@@ -637,11 +906,10 @@ namespace RemodelerLeReel.VR
             arcRenderer.positionCount = 0;
             arcRenderer.enabled = false;     // Cachée tant qu'on ne vise pas.
 
-            // Shader unlit : pas d'éclairage, visible quel que soit l'éclairage de la scène.
-            Shader unlit = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default");
-            Material lineMat = new Material(unlit);
-            lineMat.color = validArcColor;
-            arcRenderer.material = lineMat;
+            // Shader unlit à couleurs de sommets (Sprites/Default) : matériau BLANC, ce
+            // sont startColor/endColor qui colorent l'arc. Avec URP/Unlit, qui ignore
+            // les couleurs de sommets, l'arc restait vert même sur une cible invalide.
+            arcRenderer.material = VRUtils.CreateUnlitMaterial(Color.white);
         }
 
         /// <summary>
@@ -664,10 +932,7 @@ namespace RemodelerLeReel.VR
             Collider c = reticle.GetComponent<Collider>();
             if (c != null) Destroy(c);
 
-            Shader unlit = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default");
-            Material reticleMat = new Material(unlit);
-            reticleMat.color = new Color(0.1f, 0.8f, 1.0f, 0.7f);
-            reticle.GetComponent<Renderer>().sharedMaterial = reticleMat;
+            reticle.GetComponent<Renderer>().sharedMaterial = VRUtils.CreateUnlitMaterial(new Color(0.1f, 0.8f, 1.0f, 0.7f));
 
             reticleTransform = reticle.transform;
             reticle.SetActive(false);

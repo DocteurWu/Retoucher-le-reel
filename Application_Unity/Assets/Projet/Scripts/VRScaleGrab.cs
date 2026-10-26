@@ -91,23 +91,43 @@ namespace RemodelerLeReel.VR
 
         [Header("--- Stick ---")]
         [Tooltip("Sensibilité : facteur d'échelle par seconde quand le stick est poussé à fond")]
-        public float stickSensitivity = 1.5f;
+        public float stickSensitivity = 0.45f;
         [Tooltip("Inverser le sens du stick")]
         public bool invertStick = false;
 
         [Header("--- Deux manettes ---")]
         [Tooltip("Lissage du geste d'écartement (0 = brut, 20 = très fluide)")]
-        [Range(0f, 20f)] public float pinchSmoothing = 10f;
+        [Range(0f, 20f)] public float pinchSmoothing = 12f;
+        [Tooltip("Sensibilité du geste à deux mains (1 = direct, 0.6 = doux et progressif)")]
+        [Range(0.1f, 2f)] public float pinchSensitivity = 0.6f;
         [Tooltip("Appui minimum de la seconde main pour déclencher le pincement")]
         [Range(0f, 1f)] public float pinchPressThreshold = 0.5f;
         [Tooltip("Écartement minimal entre les manettes (m) pour éviter une division par zéro")]
         public float minPinchDistance = 0.03f;
+        [Tooltip("Distance max (m) entre la main libre et la surface de l'objet pour autoriser le scale à deux mains")]
+        public float pinchTouchDistance = 0.06f;
 
         [Header("--- Limites par défaut (sans composant VRScalable) ---")]
         [Tooltip("Taille minimale en % de la taille INITIALE de l'objet")]
         public float defaultMinRatio = 0.25f;
         [Tooltip("Taille maximale en % de la taille INITIALE de l'objet")]
         public float defaultMaxRatio = 4f;
+
+        [Header("--- Haptique (Vague de Redimensionnement) ---")]
+        [Tooltip("Activer les vibrations haptiques en vague pendant le scale")]
+        public bool enableScaleHaptics = true;
+
+        [Range(0f, 1f), Tooltip("Intensité de base de la vibration lors du scale")]
+        public float baseScaleHapticIntensity = 0.25f;
+
+        [Range(0f, 1f), Tooltip("Intensité maximale au pic de la vague haptique")]
+        public float maxScaleHapticIntensity = 0.65f;
+
+        [Tooltip("Fréquence de la vague haptique (cycles par seconde)")]
+        public float hapticWaveFrequency = 4.0f;
+
+        [Tooltip("Vibrer également la main tenant l'objet en mode Thumbstick (en plus de la main qui scale)")]
+        public bool vibrateHoldingHandToo = true;
 
         [Header("--- Son ---")]
         // Le clip d'origine ("ScaleGrab (one piece).mp3", 12 s) a été découpé en deux
@@ -179,6 +199,10 @@ namespace RemodelerLeReel.VR
         private float _pinchStartDistance = 1f; // écartement des manettes au départ du geste
         private Vector3 _pinchStartScale = Vector3.one;
         private float _pinchFactor = 1f;
+
+        // --- État de la vague haptique ---
+        private float _hapticWaveTimer = 0f;
+        private float _lastScaleDirection = 0f;
 
         // --- État du son ---
         private AudioSource _introSource;     // joue le segment 0 -> 4 s, une seule fois
@@ -280,6 +304,7 @@ namespace RemodelerLeReel.VR
             if (allowStick && !_pinching) UpdateThumbstick();
 
             UpdateScaleAudio();
+            UpdateScaleHaptics();
         }
 
         private void OnDisable()
@@ -298,16 +323,8 @@ namespace RemodelerLeReel.VR
         {
             if (_otherHand != null && _otherHand.isActiveAndEnabled) return;
 
-            VRGrabHand[] hands = FindObjectsByType<VRGrabHand>(FindObjectsSortMode.None);
-            _otherHand = null;
-            for (int i = 0; i < hands.Length; i++)
-            {
-                if (hands[i] != null && hands[i].handNode != handNode)
-                {
-                    _otherHand = hands[i];
-                    return;
-                }
-            }
+            // Registre VRGrabHand.AllHands : pas de parcours de scène.
+            _otherHand = VRGrabHand.GetHandForNode(VRUtils.OtherHand(handNode));
         }
 
         /// <summary>
@@ -378,10 +395,13 @@ namespace RemodelerLeReel.VR
             }
 
             XRNode freeNode = holderIsThisHand ? (_otherHand != null ? _otherHand.handNode : handNode) : handNode;
-            bool pressed = ReadPressValue(freeNode) >= pinchPressThreshold;
+            bool pressed = ReadPressValue(freeNode) >= pinchPressThreshold
+                || VRHandGestures.IsGrabGesture(freeNode, _pinching);
 
             // Front montant / descendant de l'appui = début / fin du pincement.
-            if (pressed && !_pinching) BeginPinch(freeHand);
+            // Le pincement ne DÉMARRE que si la main libre touche l'objet : les deux mains
+            // doivent être sur l'objet (la main qui tient le touche déjà).
+            if (pressed && !_pinching && IsTouchingTarget(freeHand.position)) BeginPinch(freeHand);
             else if (!pressed && _pinching) EndPinch();
 
             if (_pinching) ContinuePinch(freeHand);
@@ -393,6 +413,26 @@ namespace RemodelerLeReel.VR
         /// ces deux valeurs (et non par accumulation frame après frame), ce qui évite
         /// toute dérive.
         /// </summary>
+        /// <summary>Vrai si le point est à moins de pinchTouchDistance d'un collider de l'objet.</summary>
+        private bool IsTouchingTarget(Vector3 point)
+        {
+            if (_targetTransform == null) return false;
+            var colliders = _targetTransform.GetComponentsInChildren<Collider>();
+            float maxSqr = pinchTouchDistance * pinchTouchDistance;
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                Collider c = colliders[i];
+                if (c == null || !c.enabled || c.isTrigger) continue;
+                // ClosestPoint n'est pas supporté par les MeshCollider concaves : repli sur les bounds.
+                bool exact = !(c is MeshCollider mc) || mc.convex;
+                float sqr = exact
+                    ? (c.ClosestPoint(point) - point).sqrMagnitude
+                    : c.bounds.SqrDistance(point);
+                if (sqr <= maxSqr) return true;
+            }
+            return false;
+        }
+
         private void BeginPinch(Transform freeHand)
         {
             _pinching = true;
@@ -414,7 +454,8 @@ namespace RemodelerLeReel.VR
         private void ContinuePinch(Transform freeHand)
         {
             float distance = Mathf.Max(Vector3.Distance(_holderHand.position, freeHand.position), minPinchDistance);
-            float wanted = distance / _pinchStartDistance;
+            float rawRatio = distance / _pinchStartDistance;
+            float wanted = Mathf.Pow(rawRatio, pinchSensitivity);
 
             _pinchFactor = pinchSmoothing > 0f
                 ? Mathf.Lerp(_pinchFactor, wanted, 1f - Mathf.Exp(-pinchSmoothing * Time.deltaTime))
@@ -474,9 +515,33 @@ namespace RemodelerLeReel.VR
             Vector3 parentScale = _targetTransform.parent != null ? _targetTransform.parent.lossyScale : Vector3.one;
             Vector3 local = DivideSafe(desired, parentScale);
 
-            if ((local - _targetTransform.localScale).sqrMagnitude < 1e-12f) return;
+            Vector3 oldLocal = _targetTransform.localScale;
+            if ((local - oldLocal).sqrMagnitude < 1e-12f) return;
+
+            float scaleRatio = MaxAxis(local) / Mathf.Max(MaxAxis(oldLocal), 1e-6f);
+
             _targetTransform.localScale = local;
+
+            if (_holderHand != null)
+            {
+                if (_targetTransform.parent == _holderHand)
+                {
+                    _targetTransform.localPosition *= scaleRatio;
+                }
+                else
+                {
+                    Vector3 handLocal = _holderHand.InverseTransformPoint(_targetTransform.position);
+                    _targetTransform.position = _holderHand.TransformPoint(handLocal * scaleRatio);
+                }
+            }
+
+            // autoSyncTransforms = 0 : sans cet appel le collider garde l'ancienne
+            // taille jusqu'au pas de physique suivant (test de contact du pincement et
+            // détection de la bulle de rangement faussés).
+            Physics.SyncTransforms();
+
             _lastScaleTime = Time.unscaledTime;
+            _lastScaleDirection = scaleRatio - 1f;
 
             if (_scaleMass && _baseMass > 0f && _baseWorldSize > 1e-6f && _target != null)
             {
@@ -656,6 +721,8 @@ namespace RemodelerLeReel.VR
             _marker = null;
             _holderHand = null;
             _lastScaleTime = float.NegativeInfinity;
+            _hapticWaveTimer = 0f;
+            _lastScaleDirection = 0f;
             EndPinch();
         }
 
@@ -723,18 +790,7 @@ namespace RemodelerLeReel.VR
         /// court-circuité et la lecture dépend entièrement du New Input System.
         /// </summary>
         private static XRInputDevice GetControllerDevice(XRNode node)
-        {
-            XRInputDevice device = InputDevices.GetDeviceAtXRNode(node);
-            if (device.isValid) return device;
-
-            InputDeviceCharacteristics characteristics =
-                InputDeviceCharacteristics.Controller |
-                (node == XRNode.LeftHand ? InputDeviceCharacteristics.Left : InputDeviceCharacteristics.Right);
-
-            var found = new List<XRInputDevice>();
-            InputDevices.GetDevicesWithCharacteristics(characteristics, found);
-            return found.Count > 0 ? found[0] : default;
-        }
+            => VRStickReader.GetDevice(node);
 
         /// <summary>
         /// Identifie le périphérique Input System correspondant à une main : d'abord via
@@ -742,23 +798,7 @@ namespace RemodelerLeReel.VR
         /// Left", "Index Left"...).
         /// </summary>
         private static bool DeviceMatchesHand(InputDevice dev, bool isLeft)
-        {
-            if (dev == null || !dev.added) return false;
-
-            string targetUsage = isLeft ? "LeftHand" : "RightHand";
-            string targetName = isLeft ? "left" : "right";
-
-            var usages = dev.usages;
-            for (int i = 0; i < usages.Count; i++)
-            {
-                if (usages[i].ToString().IndexOf(targetUsage, System.StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    return true;
-                }
-            }
-
-            return dev.name.IndexOf(targetName, System.StringComparison.OrdinalIgnoreCase) >= 0;
-        }
+            => VRStickReader.DeviceMatchesHand(dev, isLeft);
 
         /// <summary>Plus grande dimension (en valeur absolue) d'un Vector3 d'échelle.</summary>
         private static float MaxAxis(Vector3 value)
@@ -777,6 +817,68 @@ namespace RemodelerLeReel.VR
                 value.x / (Mathf.Abs(divisor.x) < epsilon ? epsilon : divisor.x),
                 value.y / (Mathf.Abs(divisor.y) < epsilon ? epsilon : divisor.y),
                 value.z / (Mathf.Abs(divisor.z) < epsilon ? epsilon : divisor.z));
+        }
+        /// <summary>
+        /// Génère une onde / vague haptique continue et modulée dans la ou les manettes qui opèrent le redimensionnement.
+        /// L'intensité ondule selon une courbe sinusoïdale ('vague') dont l'amplitude et la pulsation
+        /// réagissent dynamiquement au sens et à la vitesse du scale.
+        /// </summary>
+        private void UpdateScaleHaptics()
+        {
+            if (!enableScaleHaptics) return;
+
+            bool isScalingNow = Time.unscaledTime - _lastScaleTime < ScaleActiveWindow;
+            if (!isScalingNow)
+            {
+                _hapticWaveTimer = 0f;
+                return;
+            }
+
+            // Progression temporelle de l'onde
+            _hapticWaveTimer += Time.unscaledDeltaTime * hapticWaveFrequency;
+            float wave01 = 0.5f + 0.5f * Mathf.Sin(_hapticWaveTimer * Mathf.PI * 2f);
+
+            // Modulation : si on grandit vs rétrécit, légère différence de crête pour une sensation tactile texturée
+            float speedBoost = Mathf.Clamp01(Mathf.Abs(_lastScaleDirection) * 50f);
+            float currentIntensity = Mathf.Lerp(baseScaleHapticIntensity, maxScaleHapticIntensity, wave01) * (0.6f + 0.4f * speedBoost);
+            currentIntensity = Mathf.Clamp01(currentIntensity);
+
+            float impulseDuration = Time.unscaledDeltaTime * 1.8f;
+
+            // Déterminer la manette active qui contrôle le scale :
+            // 1. En mode Deux Mains (TwoHands pinch) : les deux mains travaillent ensemble.
+            if (_pinching)
+            {
+                VRGrabHand holder = _holderHand != null ? _holderHand.GetComponent<VRGrabHand>() : null;
+                if (holder != null) holder.TriggerHaptic(currentIntensity, impulseDuration, priority: 0);
+
+                if (_otherHand != null)
+                {
+                    // Déphasage de la vague entre les deux mains pour un effet de transfert tactile stéréo
+                    float waveOther = 0.5f + 0.5f * Mathf.Sin((_hapticWaveTimer + 0.25f) * Mathf.PI * 2f);
+                    float otherIntensity = Mathf.Lerp(baseScaleHapticIntensity, maxScaleHapticIntensity, waveOther);
+                    _otherHand.TriggerHaptic(otherIntensity, impulseDuration, priority: 0);
+                }
+            }
+            // 2. En mode Thumbstick : c'est la manette qui scale (ScaleStickNode = RightHand)
+            else
+            {
+                VRGrabHand scalingHand = VRGrabHand.GetHandForNode(ScaleStickNode);
+                if (scalingHand != null)
+                {
+                    scalingHand.TriggerHaptic(currentIntensity, impulseDuration, priority: 0);
+                }
+
+                // Vibration résiduelle / résonance dans la main tenant l'objet si souhaité
+                if (vibrateHoldingHandToo && _holderHand != null)
+                {
+                    VRGrabHand holdingHand = _holderHand.GetComponent<VRGrabHand>();
+                    if (holdingHand != null && holdingHand != scalingHand)
+                    {
+                        holdingHand.TriggerHaptic(currentIntensity * 0.4f, impulseDuration, priority: 0);
+                    }
+                }
+            }
         }
     }
 }

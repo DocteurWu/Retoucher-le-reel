@@ -80,14 +80,14 @@ namespace RemodelerLeReel.VR
         public float turnAngle = 45f;
 
         /// <summary>Seuil de déclenchement : le stick doit dépasser cette valeur (0-1).</summary>
-        public float activationThreshold = 0.6f;
+        public float activationThreshold = 0.75f;
 
         /// <summary>
         /// Seuil de réarmement : le stick doit revenir SOUS cette valeur pour
         /// autoriser le prochain cran. Plus il est bas, plus le joueur doit «
         /// recentrer » nettement le stick entre deux rotations.
         /// </summary>
-        public float resetThreshold = 0.2f;
+        public float resetThreshold = 0.35f;
 
         // --- État interne ----------------------------------------------------
 
@@ -101,8 +101,6 @@ namespace RemodelerLeReel.VR
         /// <summary>Action de secours pour lire le joystick (3e niveau de secours).</summary>
         private InputAction _thumbstickAction;
 
-        /// <summary>Liste de périphériques réutilisée (évite une allocation par frame).</summary>
-        private readonly List<XRInputDevice> _deviceBuffer = new List<XRInputDevice>(4);
 
         // =====================================================================
         // INITIALISATION
@@ -160,6 +158,19 @@ namespace RemodelerLeReel.VR
         /// </summary>
         private void Update()
         {
+            // Mode mains : pas de stick (ceux d'ALVR sont fantômes). La rotation vient
+            // du MICROGESTE : pouce posé sur le côté de l'index qui glisse à gauche /
+            // à droite (main droite), dans les deux modes de déplacement.
+            if (VRModalityManager.IsHandMode)
+            {
+                int sens = VRThumbMicrogestures.SwipeThisFrame(XRNode.RightHand);
+                if (sens != 0 && !VRScaleGrab.IsScalingActive)
+                {
+                    PerformTurn(sens * turnAngle);
+                    VRSons.Jouer(VRSon.Lacher, null, 0.5f, sens > 0 ? 1.15f : 0.95f);
+                }
+                return;
+            }
             // Si le stick de cette main est réquisitionné par l'échelle
             // (poignée de la main libre serrée), on s'efface : le joueur est
             // en train de redimensionner un objet, pas de tourner.
@@ -210,21 +221,8 @@ namespace RemodelerLeReel.VR
         private float ReadThumbstickX()
         {
             // --- NIVEAU 1 : XRInputDevice (ancienne API) ---------------------
-            XRInputDevice device = InputDevices.GetDeviceAtXRNode(handNode);
-
-            // Si le nœud n'est pas directement résolu, on cherche le contrôleur
-            // correspondant par caractéristiques (main gauche / droite).
-            if (!device.isValid)
-            {
-                _deviceBuffer.Clear();
-                InputDeviceCharacteristics characteristics = InputDeviceCharacteristics.Controller |
-                    (handNode == XRNode.LeftHand ? InputDeviceCharacteristics.Left : InputDeviceCharacteristics.Right);
-                InputDevices.GetDevicesWithCharacteristics(characteristics, _deviceBuffer);
-                if (_deviceBuffer.Count > 0)
-                {
-                    device = _deviceBuffer[0];
-                }
-            }
+            // (repli par caractéristiques main gauche / droite inclus dans GetDevice)
+            XRInputDevice device = VRStickReader.GetDevice(handNode);
 
             if (device.isValid && device.TryGetFeatureValue(CommonUsages.primary2DAxis, out Vector2 axis))
             {
@@ -297,6 +295,7 @@ namespace RemodelerLeReel.VR
 
             Vector3 pivotPoint = headCamera != null ? headCamera.transform.position : xrOriginTransform.position;
             xrOriginTransform.RotateAround(pivotPoint, Vector3.up, angle);
+            Physics.SyncTransforms(); // autoSyncTransforms = 0 : les objets tenus tournent avec le rig.
         }
     }
 }

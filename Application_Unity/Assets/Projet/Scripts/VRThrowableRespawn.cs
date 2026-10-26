@@ -159,6 +159,9 @@ namespace RemodelerLeReel.VR
         /// une manette). On teste successivement le clavier, puis toutes les
         /// manettes, ce qui rend le système agnostique du matériel.
         /// </summary>
+        /// <summary>Tampon partagé (évite une allocation par frame et par objet).</summary>
+        private static readonly List<XRInputDevice> s_DeviceBuffer = new List<XRInputDevice>();
+
         private bool IsRecallButtonPressed()
         {
             // 1. Clavier (touche R) — pratique pour tester dans l'éditeur. Toujours actif.
@@ -171,7 +174,8 @@ namespace RemodelerLeReel.VR
             if (!enableButtonRecall)
                 return false;
 
-            var devices = new List<XRInputDevice>();
+            var devices = s_DeviceBuffer;
+            devices.Clear();
             InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller, devices);
             foreach (var dev in devices)
             {
@@ -186,11 +190,11 @@ namespace RemodelerLeReel.VR
 
             // 3. Sécurité : test explicite des deux mains (une manette peut ne pas
             //    apparaître dans la liste « Controller » selon le runtime).
-            XRInputDevice rightHand = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
+            XRInputDevice rightHand = VRStickReader.GetDevice(XRNode.RightHand);
             if (rightHand.isValid && rightHand.TryGetFeatureValue(CommonUsages.primaryButton, out bool aPressed) && aPressed)
                 return true;
 
-            XRInputDevice leftHand = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
+            XRInputDevice leftHand = VRStickReader.GetDevice(XRNode.LeftHand);
             if (leftHand.isValid && leftHand.TryGetFeatureValue(CommonUsages.primaryButton, out bool xPressed) && xPressed)
                 return true;
 
@@ -215,9 +219,11 @@ namespace RemodelerLeReel.VR
         public void Respawn()
         {
             // Détacher si une main le tient encore
-            VRGrabHand[] hands = FindObjectsByType<VRGrabHand>(FindObjectsSortMode.None);
-            foreach (var hand in hands)
+            var hands = VRGrabHand.AllHands; // registre : pas de parcours de scène
+            for (int i = hands.Count - 1; i >= 0; i--)
             {
+                var hand = hands[i];
+                if (hand == null) continue;
                 // IsChildOf : vrai si l'objet est quelque part sous la main dans la
                 // hiérarchie (cas d'un objet composé placé en enfant de la main).
                 if (transform.IsChildOf(hand.transform))

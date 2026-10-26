@@ -166,3 +166,18 @@ Prochainement ...
 ### Étape 8 : Export et intégration dans Unity
 1. Ranger le fichier `.ply` optimisé dans `Modeles_Exportes/`.
 2. Le copier ensuite dans `Application_Unity/Assets/Projet/Art_Graphismes/GaussianSplats/` pour l'afficher et le manipuler dans la scène Unity.
+
+#### PLY exporté par SuperSplat (« .compressed.ply ») : à décompresser d'abord
+Le plugin Unity ne lit que le PLY 3DGS standard. Un PLY compressé SuperSplat
+(en-tête avec `element chunk` et `packed_position`…) échoue à l'import avec
+`PLY ... read error, expected N data bytes got M`. Le convertir avant :
+
+```bash
+pip install numpy
+python Traitement_Gaussian_SAGA/Scripts_Entrainement/03_decompresser_ply_supersplat.py chemin/vers/scene.compressed.ply
+python Traitement_Gaussian_SAGA/Scripts_Entrainement/03_decompresser_ply_supersplat.py chemin/vers/un/dossier
+```
+
+Il écrit `scene.compressed.decompresse.ply` à côté (environ 4 fois plus gros) : c'est
+ce fichier qu'on choisit dans *Tools > Gaussian Splats > Create GaussianSplatAsset*.
+Un dossier entier peut être traité d'un coup ; les PLY déjà standard sont ignorés.
