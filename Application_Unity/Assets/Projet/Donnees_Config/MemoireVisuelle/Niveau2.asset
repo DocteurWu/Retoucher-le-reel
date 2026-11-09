@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c209467d47addd74981e1c0a6cbc9d6f, type: 3}
+  m_Name: Niveau2
+  m_EditorClassIdentifier: 
+  titre: Niveau 2
+  introduction: 'Niveau 2 : plus d''objets vont changer de place, et certains de
+    taille. Tu as moins de temps. Observe bien.'
+  observationMin: 15
+  observationMax: 60
+  nombreADeplacer: 6
+  distanceMinDeplacement: 1.5
+  graine: 0
+  nombreAChangerDeTaille: 2
+  ratioAgrandi: {x: 1.8, y: 2.4}
+  ratioReduit: {x: 0.4, y: 0.55}
+  tailleMinPourChanger: 0.12
+  toleranceRatioTaille: 0.3
+  permettreRedimensionnement: 1
+  toleranceMetres: 0.3
+  toleranceTaille: 0.6
+  nombreEssais: 1
+  seuilReussite: 0.75
+  afficherSolution: 1

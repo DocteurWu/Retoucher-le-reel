@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRBanqueSons.cs — RÉGLAGES DU SOUND DESIGN (optionnel)
 //
@@ -40,6 +41,8 @@ namespace RemodelerLeReel.VR
         public AudioClip narrationApparition;
         public AudioClip narrationLettre;
         public AudioClip reussite;
+        public AudioClip brulure;
+        public AudioClip reconstruction;
 
         private void OnEnable() => Instance = this;
 
@@ -64,6 +67,8 @@ namespace RemodelerLeReel.VR
                 case VRSon.NarrationApparition: return narrationApparition;
                 case VRSon.NarrationLettre: return narrationLettre;
                 case VRSon.Reussite: return reussite;
+                case VRSon.Brulure: return brulure;
+                case VRSon.Reconstruction: return reconstruction;
                 default: return null;
             }
         }

@@ -1,12 +1,13 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  EpreuveRecipient.cs — ÉPREUVE « REMPLIR LE RÉCIPIENT » PUIS SCÈNE SUIVANTE
 //
 //  RÔLE
 //    Le joueur doit déposer dans un récipient un nombre donné d'exemplaires de
-//    certains objets (ex. 4 fraises = l'originale + 3 duplications, 3 cylindres =
+//    certains objets (ex. 4 fraises = l'originale + 3 duplications, 3 pots =
 //    l'original + 2 duplications). Les clones comptent comme leur original (lien
-//    VRCloneOrigin posé par VRDuplicateDelete). L'épreuve mémorise chaque famille :
-//    supprimer l'original ne fait pas perdre ses copies (ni les copies de copies).
+//    VRCloneOrigin posé par VRDuplicateDelete). On compte par FAMILLE
+//    (VRCloneOrigin.famille) : supprimer l'original ne fait pas perdre ses copies.
 //    Quand le compte est bon (et stable une seconde), l'épreuve est réussie :
 //    son, panneau « Bravo », événement pour la narration, puis chargement de la
 //    scène suivante.
@@ -16,7 +17,9 @@
 //    zone de détection (visible dans la vue Scene grâce au gizmo vert).
 //    Sinon, glisser le Collider (trigger) d'un récipient modélisé à la main.
 //
-//  ÉVÉNEMENTS : EpreuveRecipient.Reussie (statique) et « A La Reussite » (Inspector).
+//  ÉVÉNEMENTS : Epreuve.UneEpreuveReussie (statique, commun à toutes les épreuves) et
+//    « A La Reussite » (Inspector). C'est une ÉTAPE (voir ProgressionEtapes) :
+//    « Scène Suivante » vide = on reste dans la scène.
 //    La narration s'y branche avec le déclencheur « Epreuve Reussie ».
 // =====================================================================================
 using System;
@@ -50,10 +53,8 @@ namespace RemodelerLeReel.Jeu
     /// Épreuve : remplir un récipient avec les bons objets, puis passer à la scène suivante.
     /// </summary>
     [AddComponentMenu("Remodeler le Reel/Jeu/Épreuve - Récipient")]
-    public class EpreuveRecipient : MonoBehaviour
+    public class EpreuveRecipient : Epreuve
     {
-        /// <summary>Levé une fois, quand le récipient contient tout ce qu'il faut.</summary>
-        public static event Action<EpreuveRecipient> Reussie;
 
         [Header("Objectif")]
         public List<ObjetRequis> objetsRequis = new List<ObjetRequis>();
@@ -96,16 +97,13 @@ namespace RemodelerLeReel.Jeu
 
         public UnityEvent aLaReussite = new UnityEvent();
 
-        /// <summary>Vrai une fois l'épreuve réussie.</summary>
-        public bool EstReussie { get; private set; }
 
         private const float PeriodeControle = 0.2f;
 
         private int[] _comptes;
-        // Famille de chaque objet requis : original + toutes ses copies, mémorisées au fil
-        // des duplications. Indispensable : supprimer l'original vide le lien
-        // VRCloneOrigin.source des copies, qui ne pourraient plus être reconnues.
-        private List<HashSet<GameObject>> _familles;
+        // Famille de chaque objet requis, relevée au lancement tant que l'original
+        // existe : elle reste valable après sa suppression (VRCloneOrigin.famille).
+        private int[] _familles;
         private int _totalPrecedent;
         private float _prochainControle;
         private float _completDepuis = -1f;
@@ -117,28 +115,10 @@ namespace RemodelerLeReel.Jeu
         {
             if (zone == null) ConstruireRecipient();
             _comptes = new int[objetsRequis.Count];
-            _familles = new List<HashSet<GameObject>>(objetsRequis.Count);
-            foreach (ObjetRequis requis in objetsRequis)
-            {
-                var famille = new HashSet<GameObject>();
-                if (requis.objet != null) famille.Add(requis.objet);
-                _familles.Add(famille);
-            }
+            _familles = new int[objetsRequis.Count];
+            for (int i = 0; i < objetsRequis.Count; i++) _familles[i] = VRCloneOrigin.FamilleDe(objetsRequis[i].objet);
             CreerPanneau();
             Controler();
-        }
-
-        private void OnEnable() => VRDuplicateDelete.ObjetDuplique += SurDuplication;
-        private void OnDisable() => VRDuplicateDelete.ObjetDuplique -= SurDuplication;
-
-        /// <summary>Une copie d'un membre de la famille (original OU copie) rejoint la famille.</summary>
-        private void SurDuplication(Rigidbody original, GameObject clone)
-        {
-            if (_familles == null || original == null || clone == null) return;
-            foreach (HashSet<GameObject> famille in _familles)
-            {
-                if (famille.Contains(original.gameObject)) famille.Add(clone);
-            }
         }
 
         private void Update()
@@ -156,20 +136,8 @@ namespace RemodelerLeReel.Jeu
         {
             if (zone == null) return;
 
-            // Filet de sécurité (clone créé par un autre chemin que l'événement) :
-            // un clone dont la source est déjà dans une famille la rejoint.
-            // Contains marche même si la source a été détruite (même référence C#).
+            // Un seul parcours des clones par contrôle (5 fois par seconde).
             VRCloneOrigin[] clones = FindObjectsByType<VRCloneOrigin>(FindObjectsSortMode.None);
-            foreach (HashSet<GameObject> famille in _familles)
-            {
-                for (int c = 0; c < clones.Length; c++)
-                {
-                    if (clones[c] != null && !ReferenceEquals(clones[c].source, null) && famille.Contains(clones[c].source))
-                    {
-                        famille.Add(clones[c].gameObject);
-                    }
-                }
-            }
 
             bool complet = objetsRequis.Count > 0;
             int total = 0;
@@ -177,9 +145,13 @@ namespace RemodelerLeReel.Jeu
             {
                 ObjetRequis requis = objetsRequis[i];
                 int n = 0;
-                foreach (GameObject membre in _familles[i])
+                if (requis.objet != null && EstDansLeBac(requis.objet)) n++; // original supprimé = ignoré
+                if (_familles[i] != 0)
                 {
-                    if (membre != null && EstDansLeBac(membre)) n++; // membre détruit = ignoré
+                    for (int c = 0; c < clones.Length; c++)
+                    {
+                        if (clones[c] != null && clones[c].famille == _familles[i] && EstDansLeBac(clones[c].gameObject)) n++;
+                    }
                 }
                 _comptes[i] = n;
                 total += Mathf.Min(n, requis.nombre);
@@ -195,6 +167,38 @@ namespace RemodelerLeReel.Jeu
             MettreAJourPanneau(complet);
 
             if (complet && Time.time - _completDepuis >= dureeStable) Reussir();
+        }
+
+        /// <summary>Validé depuis le PC : le bac affiche « Bravo », les objets restent où ils sont.</summary>
+        protected override void Forcer()
+        {
+            if (zone != null) Reussir();
+        }
+
+        /// <summary>Le bac, et les objets d'une sorte encore incomplète qui ne sont pas encore dedans.</summary>
+        protected override void AjouterObjetsAMontrer(List<Collider> liste)
+        {
+            if (zone == null || _familles == null || _comptes == null) return;
+            liste.Add(zone);
+
+            VRCloneOrigin[] clones = FindObjectsByType<VRCloneOrigin>(FindObjectsSortMode.None);
+            for (int i = 0; i < objetsRequis.Count; i++)
+            {
+                if (_comptes[i] >= objetsRequis[i].nombre) continue;
+                if (objetsRequis[i].objet != null) AjouterSiDehors(liste, objetsRequis[i].objet);
+                if (_familles[i] == 0) continue;
+                for (int c = 0; c < clones.Length; c++)
+                {
+                    if (clones[c] != null && clones[c].famille == _familles[i]) AjouterSiDehors(liste, clones[c].gameObject);
+                }
+            }
+        }
+
+        private void AjouterSiDehors(List<Collider> liste, GameObject objet)
+        {
+            if (!objet.activeInHierarchy) return;
+            Collider corps = PremierCollider(objet);
+            if (corps != null && !Contient(corps.bounds.center)) liste.Add(corps);
         }
 
         /// <summary>L'objet est-il posé dans le bac ? (actif, collider actif, centre dans la zone, pas tenu)</summary>
@@ -249,7 +253,7 @@ namespace RemodelerLeReel.Jeu
         // ------------------------------------------------------------------
         private void Reussir()
         {
-            EstReussie = true;
+            SignalerReussite();
             Debug.Log("[Epreuve] Réussie : le récipient est plein. Scène suivante : "
                       + (string.IsNullOrEmpty(sceneSuivante) ? "(aucune)" : sceneSuivante), this);
 
@@ -259,7 +263,6 @@ namespace RemodelerLeReel.Jeu
                 _panneau.text = "<color=#5dff7a><b>Bravo !</b></color>";
             }
 
-            Reussie?.Invoke(this);
             aLaReussite?.Invoke();
 
             if (!string.IsNullOrEmpty(sceneSuivante)) StartCoroutine(PasserALaSuite());

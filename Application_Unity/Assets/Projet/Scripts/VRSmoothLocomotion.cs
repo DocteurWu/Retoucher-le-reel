@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRSmoothLocomotion.cs — LOCOMOTION CONTINUE + MODULE VERTICAL (saut, gravité)
 //
@@ -83,6 +84,12 @@ namespace RemodelerLeReel.VR
         private float _lastGroundedTime = -999f;
         private bool _wasJumpPressed = false;
 
+        /// <summary>Dernier instant où des mains étaient utilisées (voir SautAutorise).</summary>
+        private float _derniereMainSuivie = -999f;
+
+        /// <summary>Après des mains suivies, le saut reste coupé ce temps (s) : la perte de suivi d'une main ne doit pas le rouvrir.</summary>
+        private const float GraceMains = 1f;
+
         /// <summary>
         /// Vrai dès que le joueur a été posé sur un sol.
         ///
@@ -120,6 +127,7 @@ namespace RemodelerLeReel.VR
             VRButtonReader.EnsureActionsInitialized();
         }
 
+                // [LH] Deplacement continu lissé avec prise en compte du centrage HMD
         private void Update()
         {
             HandleJumpAndGravity();
@@ -152,6 +160,18 @@ namespace RemodelerLeReel.VR
         ///      le sol) ;
         ///   - retombe proprement sur le sol à l'atterrissage.
         /// </summary>
+        /// <summary>Le saut n'existe qu'à la manette : faux si des mains sont (ou viennent d'être) utilisées.</summary>
+        private bool SautAutorise()
+        {
+            if (VRModalityManager.IsHandMode
+                || VRHandGestures.IsTracked(XRNode.LeftHand)
+                || VRHandGestures.IsTracked(XRNode.RightHand))
+            {
+                _derniereMainSuivie = Time.time;
+            }
+            return Time.time - _derniereMainSuivie > GraceMains;
+        }
+
         private void HandleJumpAndGravity()
         {
             if (xrOriginTransform == null) return;
@@ -161,7 +181,11 @@ namespace RemodelerLeReel.VR
 
             Vector3 originPos = xrOriginTransform.position;
 
-            // --- 1. SOL : sonde sous les PIEDS (le rig), pas sous la tête -----
+            // --- 1. SOL : sonde sous les PIEDS DU JOUEUR, à l'aplomb de sa tête --
+            // ⚠️ PAS sous l'origine du rig : c'est le centre de l'espace de jeu SteamVR,
+            // qui peut être à plusieurs mètres du joueur (PC VR : x = -6,3 dans le menu).
+            // Dans une petite pièce, l'origine tombait hors du sol : le joueur « tombait »
+            // dès le début, sans avoir bougé.
             // On distingue deux notions :
             //   hasGround  : il existe UNE surface marchable sous les pieds
             //                 (à portée de la sonde) ;
@@ -171,6 +195,11 @@ namespace RemodelerLeReel.VR
             // (surface loin en dessous => plus « pose » => il tombe) tout en
             // gardant un sol de reference quand il est en plein saut.
             Vector3 feet = originPos + Vector3.up * feetProbeHeight;
+            if (headCamera != null)
+            {
+                feet.x = headCamera.transform.position.x;
+                feet.z = headCamera.transform.position.z;
+            }
             bool hasGround = Physics.Raycast(feet, Vector3.down, out RaycastHit groundHit,
                                              groundProbeDistance, groundMask, QueryTriggerInteraction.Ignore);
             bool flat = hasGround && Vector3.Angle(groundHit.normal, Vector3.up) <= maxGroundSlope;
@@ -212,8 +241,11 @@ namespace RemodelerLeReel.VR
             }
 
             // --- 2. SAUT (bouton A de la manette droite) ------------------------
-            bool jumpPressed = VRButtonReader.Read(VRButton.A);
-            bool jumpTriggered = (jumpPressed && !_wasJumpPressed) || VRButtonReader.WasPressed(VRButton.A);
+            // ⚠️ Manettes uniquement : en mode mains, ALVR émule des boutons à partir des gestes
+            // (pincement = bouton A) et le joueur sautait à chaque fois qu'il attrapait un objet.
+            bool sautAutorise = SautAutorise();
+            bool jumpPressed = sautAutorise && VRButtonReader.Read(VRButton.A);
+            bool jumpTriggered = sautAutorise && ((jumpPressed && !_wasJumpPressed) || VRButtonReader.WasPressed(VRButton.A));
             _wasJumpPressed = jumpPressed;
 
             bool canJump = onGround || (Time.time - _lastGroundedTime) <= coyoteTime;
@@ -325,7 +357,8 @@ namespace RemodelerLeReel.VR
                 return;
             }
 
-            xrOriginTransform.position += movement * Time.deltaTime;
+            // MoveRig : synchronise les colliders des objets tenus (autoSyncTransforms = 0).
+            VRUtils.MoveRig(xrOriginTransform, xrOriginTransform.position + movement * Time.deltaTime);
         }
     }
 }

@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRScalable.cs — MARQUEUR : règles de redimensionnement d'un objet
 //

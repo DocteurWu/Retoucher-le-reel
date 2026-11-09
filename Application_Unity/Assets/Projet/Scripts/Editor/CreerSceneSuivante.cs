@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  CreerSceneSuivante.cs — CRÉER UNE SCÈNE À PARTIR D'UN NOUVEAU SPLAT (outil d'éditeur)
 //

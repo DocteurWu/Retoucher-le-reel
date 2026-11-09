@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRSonImpact.cs — SON DE CHOC D'UN OBJET
 //

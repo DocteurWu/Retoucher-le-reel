@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRThrowableRespawn.cs — REMISE EN PLACE D'UN OBJET (RESPAWN)
 //

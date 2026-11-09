@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33b71fae31e6c7d438e8566dc713e666, type: 3}
+  m_Name: central2_scene_sans_canape
+  m_EditorClassIdentifier: 
+  m_FormatVersion: 20231020
+  m_SplatCount: 983025
+  m_BoundsMin: {x: -19.853304, y: -27.850437, z: -15.25568}
+  m_BoundsMax: {x: 37.52233, y: 14.356121, z: 15.248507}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: 8d8b7fd6952c37e6c58cfb31e3dbc216
+  m_PosFormat: 2
+  m_ScaleFormat: 2
+  m_SHFormat: 3
+  m_ColorFormat: 2
+  m_PosData: {fileID: 4900000, guid: fba74c423a8ea6c47a06b5878d4790ff, type: 3}
+  m_ColorData: {fileID: 4900000, guid: f9eb34841d631c643b4d10781023a3fd, type: 3}
+  m_OtherData: {fileID: 4900000, guid: c6a0d00a49f2b52489f519a59542d4ca, type: 3}
+  m_SHData: {fileID: 4900000, guid: 8a05f3a32229fae4ca55a12977e60524, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: 577ceb5471fa02a4f8b86fb9d6a5e270, type: 3}
+  m_Cameras: []

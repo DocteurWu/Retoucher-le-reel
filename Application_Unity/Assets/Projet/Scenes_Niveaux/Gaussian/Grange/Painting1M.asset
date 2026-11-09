@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33b71fae31e6c7d438e8566dc713e666, type: 3}
+  m_Name: Painting1M
+  m_EditorClassIdentifier: 
+  m_FormatVersion: 20231020
+  m_SplatCount: 5994
+  m_BoundsMin: {x: 19.336275, y: -9.711507, z: 3.9620018}
+  m_BoundsMax: {x: 20.44004, y: -5.5313854, z: 7.003032}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: 5b3711f699d014246519a298d953bdbe
+  m_PosFormat: 2
+  m_ScaleFormat: 2
+  m_SHFormat: 3
+  m_ColorFormat: 2
+  m_PosData: {fileID: 4900000, guid: e0f2bc23594432541958842fba20a14f, type: 3}
+  m_ColorData: {fileID: 4900000, guid: 874d01b0747725d4094e24be251bc583, type: 3}
+  m_OtherData: {fileID: 4900000, guid: 34bfcb4b61ef85c469363290b9fd2096, type: 3}
+  m_SHData: {fileID: 4900000, guid: da3834ae62856bf4ba6c8d5c1a31461f, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: f6f42f64c49bb9840b87f5a9640fe9cf, type: 3}
+  m_Cameras: []

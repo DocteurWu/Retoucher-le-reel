@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRHapticInteractable.cs — PROFIL HAPTIQUE PAR OBJET
 //
@@ -104,12 +105,13 @@ namespace RemodelerLeReel.VR
                 case HapticPattern.DoublePulse:
                     hand.TriggerHaptic(settings.intensity, settings.duration * 0.4f, settings.priority);
                     yield return new WaitForSeconds(settings.duration * 0.3f);
+                    if (hand == null) break; // main détruite entre deux impulsions (changement de scène)
                     hand.TriggerHaptic(settings.intensity, settings.duration * 0.4f, settings.priority);
                     break;
 
                 case HapticPattern.TriplePulse:
                     float pLen = settings.duration * 0.25f;
-                    for (int i = 0; i < 3; i++)
+                    for (int i = 0; i < 3 && hand != null; i++)
                     {
                         hand.TriggerHaptic(settings.intensity, pLen, settings.priority);
                         yield return new WaitForSeconds(pLen * 0.8f);
@@ -117,7 +119,7 @@ namespace RemodelerLeReel.VR
                     break;
 
                 case HapticPattern.WarningBuzz:
-                    for (int i = 0; i < 4; i++)
+                    for (int i = 0; i < 4 && hand != null; i++)
                     {
                         hand.TriggerHaptic(settings.intensity, 0.03f, settings.priority);
                         yield return new WaitForSeconds(0.04f);

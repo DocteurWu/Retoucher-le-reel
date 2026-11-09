@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRHandGestures.cs — LECTURE DU SUIVI DES MAINS (XR HANDS) ET DÉTECTION DE GESTES
 //
@@ -46,7 +47,9 @@ namespace RemodelerLeReel.VR
 
         // Hystérésis de la saisie : seuil d'appui plus haut que le seuil de relâchement,
         // sinon le moindre tremblement du tracking provoque des lâchers intempestifs.
-        private const float FistPressCurl = 0.65f;
+        // FistPressCurl est relevé pour les débutants (une main détendue replie déjà ses doigts)
+        // et réglable : VRGrabHand y recopie son champ « Seuil Poing Mains ».
+        public static float FistPressCurl = 0.75f;
         private const float FistReleaseCurl = 0.45f;
         private const float PinchPress = 0.80f;
         private const float PinchRelease = 0.50f;
@@ -146,12 +149,35 @@ namespace RemodelerLeReel.VR
         }
 
         /// <summary>Position MONDE du bout d'un doigt (pour les raccourcis « toucher un doigt »).</summary>
-        public static bool TryGetFingerTipWorld(XRNode node, XRHandFingerID finger, out Vector3 worldPos)
+        public static bool TryGetFingerTipWorld(XRNode node, XRHandFingerID finger, out Vector3 worldPos, float outwardOffset = 0f)
         {
             worldPos = Vector3.zero;
             if (!TryGetHand(node, out XRHand hand)) return false;
             if (!TryGetJointPose(hand, TipOf(finger), out Pose tip)) return false;
-            worldPos = ToWorld(tip.position);
+
+            Vector3 pos = tip.position;
+            if (outwardOffset > 0.0001f)
+            {
+                Vector3 dir = Vector3.zero;
+                if (TryGetJointPose(hand, DistalOf(finger), out Pose distal))
+                {
+                    dir = tip.position - distal.position;
+                }
+                if (dir.sqrMagnitude < 1e-6f && TryGetJointPose(hand, ProximalOf(finger), out Pose prox))
+                {
+                    dir = tip.position - prox.position;
+                }
+                if (dir.sqrMagnitude > 1e-6f)
+                {
+                    pos += dir.normalized * outwardOffset;
+                }
+                else
+                {
+                    pos += (tip.rotation * Vector3.forward) * outwardOffset;
+                }
+            }
+
+            worldPos = ToWorld(pos);
             return true;
         }
 
@@ -197,6 +223,7 @@ namespace RemodelerLeReel.VR
         /// <summary>
         /// Force de pincement pouce ↔ bout du doigt, de 0 (écartés ≥ 5 cm) à 1 (collés ≤ 1,5 cm).
         /// </summary>
+                // [LH-Gestures] Calcul de pincement par distance inter-phalanges (Louai H.)
         public static float GetPinch(XRHand hand, XRHandFingerID finger)
         {
             if (finger == XRHandFingerID.Thumb) return 0f;
@@ -381,6 +408,18 @@ namespace RemodelerLeReel.VR
         }
 
         // --- Tables d'articulations ---------------------------------------------------
+
+        private static XRHandJointID DistalOf(XRHandFingerID finger)
+        {
+            switch (finger)
+            {
+                case XRHandFingerID.Thumb: return XRHandJointID.ThumbDistal;
+                case XRHandFingerID.Index: return XRHandJointID.IndexDistal;
+                case XRHandFingerID.Middle: return XRHandJointID.MiddleDistal;
+                case XRHandFingerID.Ring: return XRHandJointID.RingDistal;
+                default: return XRHandJointID.LittleDistal;
+            }
+        }
 
         private static XRHandJointID TipOf(XRHandFingerID finger)
         {

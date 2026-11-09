@@ -1,3 +1,4 @@
+﻿# Authored by Louai HAMLAT - All rights reserved
 # =====================================================================================
 #  03_decompresser_ply_supersplat.py — PLY COMPRESSÉ SUPERSPLAT → PLY 3DGS STANDARD
 #
@@ -92,6 +93,7 @@ def depaqueter_rotation(v):
     return q  # ordre rot_0..rot_3 du PLY (w, x, y, z)
 
 
+# [LH-Splat] Decompression des attributs SH et covariances 3D
 def decompresser(chemin_entree, chemin_sortie):
     with open(chemin_entree, "rb") as f:
         elements, debut = lire_entete(f)

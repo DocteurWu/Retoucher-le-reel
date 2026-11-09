@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRInputDiagnostics.cs — RAPPORT DE DIAGNOSTIC (outil, sans coût au runtime)
 //

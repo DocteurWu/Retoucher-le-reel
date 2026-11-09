@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33b71fae31e6c7d438e8566dc713e666, type: 3}
+  m_Name: canape_droite
+  m_EditorClassIdentifier: 
+  m_FormatVersion: 20231020
+  m_SplatCount: 41370
+  m_BoundsMin: {x: -4.283987, y: -4.519315, z: -8.34981}
+  m_BoundsMax: {x: -0.48773912, y: -1.3437932, z: -4.691203}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: 0cb5bc5a37fe1fbc860f82e38bbb7a1a
+  m_PosFormat: 2
+  m_ScaleFormat: 2
+  m_SHFormat: 3
+  m_ColorFormat: 2
+  m_PosData: {fileID: 4900000, guid: a21014b2f38cdbd48ba270ca9aa96379, type: 3}
+  m_ColorData: {fileID: 4900000, guid: b32999a679681ea4d893a0e705d3f482, type: 3}
+  m_OtherData: {fileID: 4900000, guid: ea545e30f0e38f04495b3e1dd7156a66, type: 3}
+  m_SHData: {fileID: 4900000, guid: 14c714b134479254ea927b5e7e934543, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: 71795b5b37a3f0d4e87dad4eae300688, type: 3}
+  m_Cameras: []

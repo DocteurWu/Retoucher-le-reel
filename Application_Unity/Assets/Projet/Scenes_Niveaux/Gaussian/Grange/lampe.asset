@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33b71fae31e6c7d438e8566dc713e666, type: 3}
+  m_Name: lampe
+  m_EditorClassIdentifier: 
+  m_FormatVersion: 20231020
+  m_SplatCount: 35971
+  m_BoundsMin: {x: -1.0399958, y: -7.81369, z: 0.06839525}
+  m_BoundsMax: {x: 0.32160008, y: -3.7131991, z: 1.2975392}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: 59ef294cad1ba567ba686c6f09abe596
+  m_PosFormat: 2
+  m_ScaleFormat: 2
+  m_SHFormat: 3
+  m_ColorFormat: 2
+  m_PosData: {fileID: 4900000, guid: 1cc8db209fc8dfb42b31b3edec60ddad, type: 3}
+  m_ColorData: {fileID: 4900000, guid: 88dced1872d21c74d80ee0f350d2dc14, type: 3}
+  m_OtherData: {fileID: 4900000, guid: 51743253d93ccf54a9920098c09986a4, type: 3}
+  m_SHData: {fileID: 4900000, guid: abdc6e25408267347aab5857941873b8, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: adb2f8a7853ce684897f0eac4214a0b7, type: 3}
+  m_Cameras: []

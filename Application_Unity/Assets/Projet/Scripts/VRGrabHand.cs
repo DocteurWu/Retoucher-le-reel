@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRGrabHand.cs — MANETTE : SUIVI 6-DOF + SAISIE + LANCER
 //
@@ -6,6 +7,9 @@
 //    2. SAISIE : une sphère de grabRadius (18 cm) entoure la main ; à l'appui
 //       du grip ou du trigger, l'objet le plus proche est parenté à la main,
 //       devient cinématique et perd la gravité (il ne tombe plus en main).
+//       À MAINS NUES, réglages plus stricts pour les débutants (saisies au hasard) :
+//       portée réduite, geste à tenir un court instant, poing franc, et petit « tic »
+//       quand un objet passe à portée (voir « Saisie à mains nues »).
 //    3. LANCER : au relâchement, l'objet repart avec la MOYENNE des 8 dernières
 //       vitesses de la main (on peut donc lancer en remuant le poignet).
 //
@@ -99,8 +103,24 @@ namespace RemodelerLeReel.VR
         /// contact) et la distance de recherche des objets attrapables.
         /// 0,18 m ≈ une portée de main naturelle.
         /// </summary>
-        [Tooltip("Rayon de détection pour attraper les objets")]
+        [Tooltip("Rayon de détection pour attraper les objets (manettes ; à mains nues : « Rayon Saisie Mains »)")]
         public float grabRadius = 0.18f;
+
+        [Header("Saisie à mains nues")]
+        [Min(0.02f)]
+        [Tooltip("Portée de saisie à mains nues (m).")]
+        public float rayonSaisieMains = 0.10f;
+
+        [Range(0f, 1f)]
+        [Tooltip("Le geste doit être tenu ce temps (s) avant d'attraper : une main qui se ferme à moitié en passant n'attrape rien.")]
+        public float maintienSaisieMains = 0.2f;
+
+        [Range(0.5f, 0.95f)]
+        [Tooltip("Flexion moyenne (majeur + annulaire) à dépasser pour que le poing compte (0 = tendu, 1 = replié).")]
+        public float seuilPoingMains = 0.75f;
+
+        [Tooltip("Petit « tic » quand un objet passe à portée de la main.")]
+        public bool ticAPortee = true;
 
         /// <summary>
         /// Multiplicateur appliqué à la vitesse mesurée de la main au moment du
@@ -189,6 +209,21 @@ namespace RemodelerLeReel.VR
         /// descendant) — un maintien ne doit grabber qu'une seule fois.
         /// </summary>
         private bool _wasGrabPressed;
+
+        /// <summary>Durée (s) pendant laquelle une main qui n'est plus suivie garde son état.</summary>
+        private const float GracePerteSuivi = 1f;
+        private const float PeriodeTic = 0.1f;
+        private const float IntervalleTic = 0.25f;
+
+        private bool _saisieEnAttente;
+        private float _debutFermeture;
+        private float _dernierSuiviMain;
+        private Rigidbody _objetAPortee;
+        private float _prochainControleTic;
+        private float _prochainTic;
+
+        /// <summary>Main fermée, en attente de la fin du maintien : la saisie n'a pas encore été tentée.</summary>
+        public bool SaisieEnAttente => _saisieEnAttente;
 
         /// <summary>
         /// Objet actuellement tenu par cette main (null si la main est vide). Exposé en
@@ -426,6 +461,8 @@ namespace RemodelerLeReel.VR
             Application.onBeforeRender -= OnBeforeRenderHand;
             AllHands.Remove(this);
 
+            _objetAPortee = null;
+
             if (_grabbedBody != null)
             {
                 ReleaseObject();
@@ -478,15 +515,27 @@ namespace RemodelerLeReel.VR
             // relâchement doit rester possible à tout moment.
             bool canGrab = !VRInputLock.GrabSuppressed || _grabbedBody != null;
 
-            // FRONT MONTANT : appui -> on attrape si main libre.
-            if (isPressed && !_wasGrabPressed && canGrab)
+            // FRONT MONTANT : appui -> une tentative de saisie, après le maintien (mains nues)
+            // ou tout de suite (manettes). Une seule par fermeture : une main déjà fermée
+            // qui arrive sur un objet ne l'attrape pas.
+            if (isPressed && !_wasGrabPressed)
             {
-                if (_grabbedBody == null) TryGrabClosestObject();
+                _saisieEnAttente = true;
+                _debutFermeture = Time.time;
             }
+            if (!isPressed) _saisieEnAttente = false;
+
+            float maintien = VRModalityManager.IsHandMode ? maintienSaisieMains : 0f;
+            if (_saisieEnAttente && Time.time - _debutFermeture >= maintien)
+            {
+                _saisieEnAttente = false;
+                if (canGrab && _grabbedBody == null) TryGrabClosestObject();
+            }
+
             // FRONT DESCENDANT : le bouton vient d'être relâché → on lance.
             // Toujours autorisé, même en mode échelle : sinon on ne pourrait
             // jamais se débarrasser d'un objet.
-            else if (!isPressed && _wasGrabPressed)
+            if (!isPressed && _wasGrabPressed)
             {
                 if (_grabbedBody != null)
                 {
@@ -501,6 +550,7 @@ namespace RemodelerLeReel.VR
             }
 
             _wasGrabPressed = isPressed;
+            MettreAJourTic();
         }
 
         // =====================================================================
@@ -523,6 +573,7 @@ namespace RemodelerLeReel.VR
         /// tourné (snap turn) ou déplacé (téléportation). Écrire la pose en local
         /// garde la main correctement à sa place dans ce repère.
         /// </summary>
+                // [LH] Echantillonnage 6-DoF et compensation inertielle du tracker
         private void UpdateHandTracking()
         {
             Vector3 pos;
@@ -814,8 +865,23 @@ namespace RemodelerLeReel.VR
         /// du plus fiable au plus large, car selon le pilote les Returning
         /// touches analogiques, booléennes ou les deux peuvent être présentes.
         /// </summary>
+                // [LH-Grab] Detection appui gachette / pincement (seuil dynamique)
         private bool IsGrabPressed()
         {
+            // MAINS NUES : le geste, et lui seul. ALVR simule grip et gâchette à partir des
+            // gestes, avec ses propres seuils : les lire court-circuiterait les nôtres.
+            if (VRModalityManager.IsHandMode)
+            {
+                VRHandGestures.FistPressCurl = seuilPoingMains;
+                if (!VRHandGestures.IsTracked(handNode))
+                {
+                    // Main cachée : on garde l'état un instant (pas de lâcher intempestif).
+                    return _wasGrabPressed && Time.time - _dernierSuiviMain <= GracePerteSuivi;
+                }
+                _dernierSuiviMain = Time.time;
+                return VRHandGestures.IsGrabGesture(handNode, _wasGrabPressed);
+            }
+
             // 1. XRInputDevice legacy
             XRInputDevice device = VRStickReader.GetDevice(handNode);
             if (device.isValid)
@@ -895,9 +961,11 @@ namespace RemodelerLeReel.VR
         /// main abandonnait TOUTE sa saisie : elle ne pouvait plus rien
         /// attraper tant que l'autre main tenait son objet.
         /// </summary>
+                // [Louai H.] Recherche par rayon spherique du Rigidbody interactable le plus proche
         private Rigidbody FindClosestGrabbable()
         {
-            int count = Physics.OverlapSphereNonAlloc(transform.position, grabRadius, _overlapResults);
+            float rayon = VRModalityManager.IsHandMode ? rayonSaisieMains : grabRadius;
+            int count = Physics.OverlapSphereNonAlloc(transform.position, rayon, _overlapResults);
             Rigidbody closest = null;
             float bestDistSq = float.MaxValue;
 
@@ -922,6 +990,28 @@ namespace RemodelerLeReel.VR
             }
 
             return closest;
+        }
+
+        /// <summary>
+        /// Mains nues : petit « tic » quand un objet passe à portée (ou quand l'objet à portée
+        /// change). Une main déjà fermée sans saisie en attente n'attrapera rien : pas de tic.
+        /// </summary>
+        private void MettreAJourTic()
+        {
+            if (Time.time < _prochainControleTic) return;
+            _prochainControleTic = Time.time + PeriodeTic;
+
+            bool actif = ticAPortee && VRModalityManager.IsHandMode && _grabbedBody == null
+                         && !VRInputLock.GrabSuppressed && (!IsGrabInputActive || _saisieEnAttente);
+            Rigidbody objet = actif ? FindClosestGrabbable() : null;
+            if (objet == _objetAPortee) return;
+            _objetAPortee = objet;
+
+            if (objet != null && Time.time >= _prochainTic)
+            {
+                _prochainTic = Time.time + IntervalleTic;
+                VRSons.Jouer(VRSon.NarrationLettre, transform.position, 0.7f, 0.8f);
+            }
         }
 
         /// <summary>
@@ -955,7 +1045,7 @@ namespace RemodelerLeReel.VR
         ///  6. On vide l'historique de vitesses : le lancer ne doit pas prendre en
         ///     compte les frames précédant la saisie.
         /// </summary>
-private void TryGrabClosestObject()
+        private void TryGrabClosestObject()
         {
             GrabBody(FindClosestGrabbable());
         }

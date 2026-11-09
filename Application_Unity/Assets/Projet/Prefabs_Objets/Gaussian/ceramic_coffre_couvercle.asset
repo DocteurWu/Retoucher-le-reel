@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33b71fae31e6c7d438e8566dc713e666, type: 3}
+  m_Name: ceramic_coffre_couvercle
+  m_EditorClassIdentifier: 
+  m_FormatVersion: 20231020
+  m_SplatCount: 230
+  m_BoundsMin: {x: -0.14347927, y: -0.5054169, z: -1.6696477}
+  m_BoundsMax: {x: 0.031207267, y: -0.4253777, z: -1.2082863}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: c5c8baa128bc70c06ebaf284ff6096ff
+  m_PosFormat: 2
+  m_ScaleFormat: 2
+  m_SHFormat: 3
+  m_ColorFormat: 2
+  m_PosData: {fileID: 4900000, guid: 6c40dfa73a662fe49ab3bd157f1beab6, type: 3}
+  m_ColorData: {fileID: 4900000, guid: 24067bf9b4302934997b81f6c151f377, type: 3}
+  m_OtherData: {fileID: 4900000, guid: 8b156ae8d9a7b244b890784bcf0ea245, type: 3}
+  m_SHData: {fileID: 4900000, guid: dc8a6d0e9e192c14897579bf76e55daf, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: 55fcf23910be34942959fd1bc6660e5b, type: 3}
+  m_Cameras: []

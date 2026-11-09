@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRSons.cs — SOUND DESIGN DU MODULE VR (point d'accès unique)
 //
@@ -34,7 +35,9 @@ namespace RemodelerLeReel.VR
         Impact,
         NarrationApparition,
         NarrationLettre,
-        Reussite
+        Reussite,
+        Brulure,
+        Reconstruction
     }
 
     /// <summary>
@@ -146,13 +149,15 @@ namespace RemodelerLeReel.VR
         // ------------------------------------------------------------------
         // Synthèse procédurale
         // ------------------------------------------------------------------
+        /// <summary>Do-mi-sol-do (Hz) de l'arpège de réussite.</summary>
+        private static readonly float[] NotesArpege = { 523.25f, 659.25f, 784f, 1046.5f };
+
         /// <summary>Quatre notes de 0,12 s qui s'enchaînent, la dernière tenue.</summary>
         private static float Arpege(float t)
         {
-            float[] notes = { 523.25f, 659.25f, 784f, 1046.5f };
-            int i = Mathf.Min((int)(t / 0.12f), notes.Length - 1);
+            int i = Mathf.Min((int)(t / 0.12f), NotesArpege.Length - 1);
             float debut = i * 0.12f;
-            return Sinus(t, notes[i]) * Decroissance(t - debut, i == notes.Length - 1 ? 3f : 10f);
+            return Sinus(t, NotesArpege[i]) * Decroissance(t - debut, i == NotesArpege.Length - 1 ? 3f : 10f);
         }
 
         private static AudioClip Procedural(VRSon son)
@@ -183,6 +188,13 @@ namespace RemodelerLeReel.VR
                 case VRSon.NarrationLettre: clip = Synthetiser(son, 0.025f, (t, d) => (Bruit() * 0.4f + Sinus(t, 1800f) * 0.6f) * Decroissance(t, 180f)); break;
                 // Arpège majeur montant (do-mi-sol-do) : épreuve réussie.
                 case VRSon.Reussite: clip = Synthetiser(son, 1.2f, (t, d) => Arpege(t) * 0.5f); break;
+                // Embrasement (VRBrulure) : souffle grave qui enfle puis s'éteint, crépitements épars.
+                case VRSon.Brulure: clip = Synthetiser(son, 3f, (t, d) =>
+                    (Bruit() * 0.45f + Sinus(t, Glisse(t, d, 95f, 45f)) * 0.6f) * Mathf.Min(1f, t / 0.08f) * Decroissance(t, 1.1f)
+                    + (Random.value < 0.0025f * Decroissance(t, 0.6f) ? Bruit() * 0.9f : 0f)); break;
+                // Reconstruction (VRBrulure) : scintillement qui monte (deux notes en octave).
+                case VRSon.Reconstruction: clip = Synthetiser(son, 1.6f, (t, d) =>
+                    (Sinus(t, Glisse(t, d, 330f, 1320f)) * 0.5f + Sinus(t, Glisse(t, d, 495f, 1980f), 1) * 0.3f) * Cloche(t, d) * 0.6f); break;
             }
 
             _proceduraux[son] = clip;

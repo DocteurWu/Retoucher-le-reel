@@ -1,9 +1,11 @@
+﻿# Authored by Louai HAMLAT - All rights reserved
 import os
 import sys
 from pathlib import Path
 import yaml
 import torch
 
+# [L. Hamlat] Normalisation et export du nuage de gaussiennes 3D
 def export_ply(workspace_dir, output_ply_path):
     print("Application du patch de sécurité torch.load (PyTorch 2.6+ compatibilité)...")
     _orig_load = torch.load

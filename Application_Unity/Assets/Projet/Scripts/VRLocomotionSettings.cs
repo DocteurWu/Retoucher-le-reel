@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRLocomotionSettings.cs — MODE DE LOCOMOTION (état partagé menu ↔ jeu)
 //

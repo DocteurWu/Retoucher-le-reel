@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRHeadTracker.cs — POSE DE LA TÊTE (casque)
 //
@@ -72,6 +73,7 @@ namespace RemodelerLeReel.VR
         /// Liste réutilisée pour lire les XRNodeState (évite une allocation par frame).
         /// </summary>
         private readonly List<XRNodeState> _nodeStates = new List<XRNodeState>();
+        private readonly List<XRInputSubsystem> _sousSystemes = new List<XRInputSubsystem>();
 
         // =====================================================================
         // INITIALISATION
@@ -207,7 +209,8 @@ namespace RemodelerLeReel.VR
         /// </summary>
         private void TryConfigureFloorOrigin()
         {
-            var subsystems = new List<XRInputSubsystem>();
+            List<XRInputSubsystem> subsystems = _sousSystemes; // réutilisée : appelée à chaque image tant que le sol n'est pas réglé
+            subsystems.Clear();
             SubsystemManager.GetSubsystems(subsystems);
 
             foreach (var sub in subsystems)

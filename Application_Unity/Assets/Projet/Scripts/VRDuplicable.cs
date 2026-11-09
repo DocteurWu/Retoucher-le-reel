@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRDuplicable.cs — MARQUEUR : droits de duplication / suppression
 //

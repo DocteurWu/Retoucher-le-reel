@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33b71fae31e6c7d438e8566dc713e666, type: 3}
+  m_Name: grange_decor_leger
+  m_EditorClassIdentifier: 
+  m_FormatVersion: 20231020
+  m_SplatCount: 2641045
+  m_BoundsMin: {x: -135.29124, y: -176.95255, z: -176.95148}
+  m_BoundsMax: {x: 126.72423, y: 57.456238, z: 138.93927}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: 16b95943735fcfe8441e54220b938193
+  m_PosFormat: 2
+  m_ScaleFormat: 2
+  m_SHFormat: 3
+  m_ColorFormat: 2
+  m_PosData: {fileID: 4900000, guid: 725dbaf45d7fda14387941b34484ef52, type: 3}
+  m_ColorData: {fileID: 4900000, guid: 59738bb1136b462498b0e829c211eabf, type: 3}
+  m_OtherData: {fileID: 4900000, guid: bd2fc16883278554b864bc0c6a2e86b3, type: 3}
+  m_SHData: {fileID: 4900000, guid: dd23b4e14913831409577c7610374af1, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: 542bfccb5adeed248bf7cb4c58b7e1c6, type: 3}
+  m_Cameras: []

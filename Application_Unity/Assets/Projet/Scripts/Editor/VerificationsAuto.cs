@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VerificationsAuto.cs — VÉRIFICATIONS AUTOMATIQUES (outil d'éditeur)
 //
@@ -17,7 +18,8 @@
 //      Unity.exe -batchmode -nographics -projectPath <projet>
 //                 -executeMethod RemodelerLeReel.EditorTools.VerificationsAuto.VerifierNarration
 //
-//  ⚠️ Ne pas passer -quit : le script appelle lui-même EditorApplication.Exit().
+//  ⚠️ Ne pas passer -quit : le script appelle lui-même EditorApplication.Exit() (en batch seulement ;
+//  depuis le menu, il quitte juste le mode Play).
 //
 //  RÉFÉRENCES : voir Assets/Projet/Scripts/Jeu/README.md
 // =====================================================================================
@@ -47,6 +49,8 @@ namespace RemodelerLeReel.EditorTools
         [MenuItem("Retoucher le Reel/Outils/Vérifier la narration (mode Play)")]
         public static void VerifierNarration()
         {
+            // Lancé depuis le menu (pas en batch) : ne pas perdre la scène en cours sans demander.
+            if (!Application.isBatchMode && !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
             Erreurs.Clear();
             _termine = false;
             _controle = false;
@@ -67,7 +71,7 @@ namespace RemodelerLeReel.EditorTools
             {
                 Debug.LogError("[VERIF] ECHEC — aucune NarrationSequence « Au démarrage » avec une réplique dans "
                                + SceneTest + " (lance « Installer la narration » d'abord).");
-                EditorApplication.Exit(3);
+                Quitter(3);
                 return;
             }
 
@@ -217,7 +221,17 @@ namespace RemodelerLeReel.EditorTools
                 foreach (string e in Erreurs) Debug.LogError("[VERIF] ECHEC — " + e);
             }
 
-            EditorApplication.Exit(code);
+            Quitter(code);
+        }
+
+        /// <summary>
+        /// En mode batch : quitte Unity avec le code de retour. Depuis le menu : quitte seulement le
+        /// mode Play (avant, cliquer sur le menu fermait l'éditeur à la fin de la vérification).
+        /// </summary>
+        private static void Quitter(int code)
+        {
+            if (Application.isBatchMode) EditorApplication.Exit(code);
+            else if (EditorApplication.isPlaying) EditorApplication.ExitPlaymode();
         }
     }
 }

@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  NarrationSequence.cs — UN MOMENT DE NARRATION ET SON DÉCLENCHEUR
 //
@@ -7,7 +8,7 @@
 //      • à la suite d'une autre séquence (enchaînement) ;
 //      • sur un événement du joueur : saisir, lâcher, toucher, regarder un objet,
 //        entrer dans une zone, dupliquer, supprimer, ranger dans la bulle,
-//        se téléporter, réussir une épreuve ;
+//        se téléporter, réussir une épreuve, ouvrir une porte ;
 //      • à la main (« Manuel ») : appeler Declencher() depuis un UnityEvent.
 //
 //  À POSER SUR : l'objet « Narration ». On en met AUTANT QU'ON VEUT sur le même
@@ -52,8 +53,12 @@ namespace RemodelerLeReel.Jeu
         Teleportation,
         [Tooltip("Uniquement par un appel à Declencher() (UnityEvent, autre script).")]
         Manuel,
-        [Tooltip("Une épreuve (EpreuveRecipient) est réussie. Objet cible = l'épreuve, vide = n'importe laquelle.")]
-        EpreuveReussie
+        [Tooltip("Une épreuve (récipient OU tableau) est réussie. Objet cible = l'épreuve, vide = n'importe laquelle.")]
+        EpreuveReussie,
+        [Tooltip("Une porte (VRPorte) est ouverte à fond. Objet cible = la porte, vide = n'importe laquelle.")]
+        PorteOuverte,
+        [Tooltip("Toutes les étapes de ProgressionEtapes sont réussies (la porte de sortie se déverrouille).")]
+        EtapesTerminees
     }
 
     /// <summary>Une phrase de la narration.</summary>
@@ -135,7 +140,7 @@ namespace RemodelerLeReel.Jeu
         private bool _armee;           // déclenchée, en attente ou en cours d'affichage
         private float _regardCumule;
         private Collider[] _colliders;
-        private GameObject _racineCible;
+        private int _familleCible; // famille de l'objet cible (survit à la suppression de l'original)
 
         private void Awake()
         {
@@ -154,7 +159,9 @@ namespace RemodelerLeReel.Jeu
             VRHandMenu.ObjetRange += SurRangement;
             VRHandMenu.ObjetRecupere += SurRecuperation;
             VRTeleportation.Teleporte += SurTeleportation;
-            EpreuveRecipient.Reussie += SurEpreuveReussie;
+            Epreuve.UneEpreuveReussie += SurEpreuveReussie;
+            ProgressionEtapes.Terminees += SurEtapesTerminees;
+            VRPorte.Ouverte += SurPorteOuverte;
         }
 
         private void OnDisable()
@@ -166,7 +173,9 @@ namespace RemodelerLeReel.Jeu
             VRHandMenu.ObjetRange -= SurRangement;
             VRHandMenu.ObjetRecupere -= SurRecuperation;
             VRTeleportation.Teleporte -= SurTeleportation;
-            EpreuveRecipient.Reussie -= SurEpreuveReussie;
+            Epreuve.UneEpreuveReussie -= SurEpreuveReussie;
+            ProgressionEtapes.Terminees -= SurEtapesTerminees;
+            VRPorte.Ouverte -= SurPorteOuverte;
             if (_precedenteEcoutee != null) _precedenteEcoutee.Terminee -= SurPrecedenteTerminee;
             _precedenteEcoutee = null;
         }
@@ -176,7 +185,7 @@ namespace RemodelerLeReel.Jeu
             if (objetCible != null)
             {
                 _colliders = objetCible.GetComponentsInChildren<Collider>();
-                _racineCible = RacineFamille(objetCible);
+                _familleCible = VRCloneOrigin.FamilleDe(objetCible);
             }
 
             switch (declencheur)
@@ -258,7 +267,9 @@ namespace RemodelerLeReel.Jeu
         private void SurSuppression(Rigidbody corps) => Si(DeclencheurNarration.ObjetSupprime, corps);
         private void SurRangement(Rigidbody corps) => Si(DeclencheurNarration.ObjetRange, corps);
         private void SurRecuperation(Rigidbody corps) => Si(DeclencheurNarration.ObjetRecupere, corps);
-        private void SurEpreuveReussie(EpreuveRecipient epreuve) => Si(DeclencheurNarration.EpreuveReussie, epreuve);
+        private void SurEpreuveReussie(Epreuve epreuve) => Si(DeclencheurNarration.EpreuveReussie, epreuve);
+        private void SurEtapesTerminees(ProgressionEtapes progression) => Si(DeclencheurNarration.EtapesTerminees, progression);
+        private void SurPorteOuverte(VRPorte porte) => Si(DeclencheurNarration.PorteOuverte, porte);
 
         private void SurTeleportation(Vector3 destination)
         {
@@ -282,14 +293,7 @@ namespace RemodelerLeReel.Jeu
             Transform cible = objetCible.transform;
             if (t == cible || t.IsChildOf(cible) || cible.IsChildOf(t)) return true;
 
-            return inclureClones && _racineCible != null && RacineFamille(objet.gameObject) == _racineCible;
-        }
-
-        /// <summary>Objet source d'une famille de clones (lui-même s'il n'est pas un clone).</summary>
-        private static GameObject RacineFamille(GameObject objet)
-        {
-            VRCloneOrigin origine = objet.GetComponentInParent<VRCloneOrigin>();
-            return origine != null && origine.source != null ? origine.source : objet;
+            return inclureClones && _familleCible != 0 && VRCloneOrigin.FamilleDe(objet.gameObject) == _familleCible;
         }
 
         // ------------------------------------------------------------------

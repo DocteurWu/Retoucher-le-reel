@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33b71fae31e6c7d438e8566dc713e666, type: 3}
+  m_Name: ceramic_tableau
+  m_EditorClassIdentifier: 
+  m_FormatVersion: 20231020
+  m_SplatCount: 7824
+  m_BoundsMin: {x: 2.430405, y: -1.9017309, z: -1.725978}
+  m_BoundsMax: {x: 2.834597, y: -1.5034299, z: -1.5699085}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: ce5d1c797dc15c154bba97046c264d78
+  m_PosFormat: 2
+  m_ScaleFormat: 2
+  m_SHFormat: 3
+  m_ColorFormat: 2
+  m_PosData: {fileID: 4900000, guid: 03951d1027884d04c834f3894658d458, type: 3}
+  m_ColorData: {fileID: 4900000, guid: 4da7fa901e5651c49bc4c7a01b8a7805, type: 3}
+  m_OtherData: {fileID: 4900000, guid: 5ac24f1069f73f34cbc8bd09ce694594, type: 3}
+  m_SHData: {fileID: 4900000, guid: 66208bb8112c7d841a49d7b12143a3b1, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: cb1e6e7a2361a274898fe475901e1ca6, type: 3}
+  m_Cameras: []

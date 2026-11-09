@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33b71fae31e6c7d438e8566dc713e666, type: 3}
+  m_Name: ceramic_Porte
+  m_EditorClassIdentifier: 
+  m_FormatVersion: 20231020
+  m_SplatCount: 4679
+  m_BoundsMin: {x: 4.9925833, y: -2.2053924, z: -0.0331288}
+  m_BoundsMax: {x: 5.726911, y: -0.15920535, z: 1.206832}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: 2905c6d875ca377ca7f42274db80b175
+  m_PosFormat: 2
+  m_ScaleFormat: 2
+  m_SHFormat: 3
+  m_ColorFormat: 2
+  m_PosData: {fileID: 4900000, guid: 5d0d59a42269dce4e94543ed7034d3b8, type: 3}
+  m_ColorData: {fileID: 4900000, guid: 98154b355abbd7c46ae791d8fc3f4039, type: 3}
+  m_OtherData: {fileID: 4900000, guid: 50531933eb656fb459e1d204504c7347, type: 3}
+  m_SHData: {fileID: 4900000, guid: bb4e206a608edce419fcd3689ae4b417, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: 37e4f9eb7a605d143ab0cea27958c850, type: 3}
+  m_Cameras: []

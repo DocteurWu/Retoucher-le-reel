@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  OutilsScene.cs — OUTILS D'ÉDITEUR (non embarqué dans le jeu)
 //
@@ -39,6 +40,9 @@ namespace RemodelerLeReel.EditorTools
         [MenuItem("Retoucher le Reel/Outils/Installer la narration")]
         public static void InstallerNarration()
         {
+            // Ces menus ouvrent d'autres scènes (OpenSceneMode.Single) : sans cette question, les
+            // modifications non enregistrées de la scène ouverte étaient perdues sans avertissement.
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
             foreach (string chemin in ScenesATraiter)
             {
                 InstallerDansScene(chemin);

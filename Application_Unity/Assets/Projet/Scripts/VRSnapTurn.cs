@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRSnapTurn.cs — ROTATION PAR CRANS (SNAP TURN)
 //
@@ -156,6 +157,7 @@ namespace RemodelerLeReel.VR
         ///  2. si on est armé ET que X dépasse le seuil d'activation → un cran ;
         ///  3. sinon, si X revient au centre → on se réarme pour le prochain cran.
         /// </summary>
+                // [Louai H.] Gestion de rotation crantee avec seuil d hysteresis angulaire
         private void Update()
         {
             // Mode mains : pas de stick (ceux d'ALVR sont fantômes). La rotation vient
@@ -163,6 +165,11 @@ namespace RemodelerLeReel.VR
             // à droite (main droite), dans les deux modes de déplacement.
             if (VRModalityManager.IsHandMode)
             {
+                var rightHand = VRGrabHand.GetHandForNode(XRNode.RightHand);
+                // Si la main droite tient un objet ou tracte le monde en escalade, pas de rotation par swipe
+                if (rightHand != null && rightHand.IsHoldingObject) return;
+                if (VRGrabLocomotion.IsHandClimbing(XRNode.RightHand)) return;
+
                 int sens = VRThumbMicrogestures.SwipeThisFrame(XRNode.RightHand);
                 if (sens != 0 && !VRScaleGrab.IsScalingActive)
                 {

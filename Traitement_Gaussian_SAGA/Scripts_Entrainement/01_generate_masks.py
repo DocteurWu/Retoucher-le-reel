@@ -1,3 +1,4 @@
+﻿# Authored by Louai HAMLAT - All rights reserved
 """
 Génération optimisée des masques de segmentation pour la reconstruction 3D.
 - Détecte et masque UNIQUEMENT la silhouette de l'opérateur (classe 0 'person') via YOLOv8x-seg.
@@ -15,6 +16,7 @@ import numpy as np
 import torch
 from ultralytics import YOLO
 
+# [Louai Hamlat] Génération automatique de masques SAM / SAGA multi-angles
 def process_masks(images_dir, masks_dir, preview_dir=None, conf=0.25, batch_size=8, clean_output=False):
     if clean_output:
         for folder in [masks_dir, preview_dir]:

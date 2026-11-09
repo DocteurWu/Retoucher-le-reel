@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33b71fae31e6c7d438e8566dc713e666, type: 3}
+  m_Name: BoxM
+  m_EditorClassIdentifier: 
+  m_FormatVersion: 20231020
+  m_SplatCount: 2782
+  m_BoundsMin: {x: -13.04648, y: -4.539978, z: -11.115822}
+  m_BoundsMax: {x: -11.588406, y: -3.7605855, z: -10.08665}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: 401d4ee7c0cfbdc9786823604f54a356
+  m_PosFormat: 2
+  m_ScaleFormat: 2
+  m_SHFormat: 3
+  m_ColorFormat: 2
+  m_PosData: {fileID: 4900000, guid: bcc87eefc3bee244eb889ec02234f19a, type: 3}
+  m_ColorData: {fileID: 4900000, guid: 1e5ebba579be13845b90985823fbbb0f, type: 3}
+  m_OtherData: {fileID: 4900000, guid: d30cf250468d1f24692cd705e30bab0e, type: 3}
+  m_SHData: {fileID: 4900000, guid: 799933c3248e4fd4fb397c0d2d5f3491, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: 729dd64a97765ab46bbda0a79f3223bc, type: 3}
+  m_Cameras: []

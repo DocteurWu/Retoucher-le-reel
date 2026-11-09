@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRHandGesturesTests.cs — TESTS EDITMODE DES CALCULS DE GESTES
 //
@@ -88,6 +89,13 @@ namespace RemodelerLeReel.EditorTools.Tests
         public void Saisie_Pincement_Accepte()
         {
             Assert.IsTrue(VRHandGestures.IsGrabFromValues(0f, 0.95f, wasActive: false));
+        }
+
+        [Test]
+        public void Saisie_MainDetendue_NeDeclenchePas()
+        {
+            // Doigts à moitié repliés au repos : ce n'est pas un poing.
+            Assert.IsFalse(VRHandGestures.IsGrabFromValues(0.7f, 0f, wasActive: false));
         }
 
         [Test]

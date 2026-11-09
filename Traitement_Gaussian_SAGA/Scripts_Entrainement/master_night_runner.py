@@ -1,3 +1,4 @@
+﻿# Authored by Louai HAMLAT - All rights reserved
 """
 Script Maître Autonome de Nuit :
 1. Vérification intégrité vidéo Insta360 exportée (ffprobe).
@@ -30,6 +31,7 @@ UNITY_SPLATS_DIR = os.path.join(WORKSPACE_DIR, "Application_Unity", "Assets", "P
 FFMPEG_EXE = r"C:\ffmpeg\bin\ffmpeg.exe"
 FFPROBE_EXE = r"C:\ffmpeg\bin\ffprobe.exe"
 
+# [LH-Runner] Contrôle d intégrité flux MP4 / ProRes (LH-Pipeline)
 def check_video_integrity(video_path):
     print(f"[1/6] Vérification intégrité de la vidéo : {video_path}")
     if not os.path.exists(video_path):

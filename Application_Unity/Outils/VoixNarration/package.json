@@ -1,0 +1,16 @@
+{
+  "name": "voix-narration",
+  "private": true,
+  "type": "module",
+  "description": "Génère avec ElevenLabs la voix des répliques de narration du jeu.",
+  "scripts": {
+    "liste": "node generer.mjs liste",
+    "voix": "node --env-file-if-exists=../../../../../.env generer.mjs voix",
+    "bibliotheque": "node --env-file-if-exists=../../../../../.env generer.mjs bibliotheque",
+    "essai": "node --env-file-if-exists=../../../../../.env generer.mjs essai",
+    "generer": "node --env-file-if-exists=../../../../../.env generer.mjs generer"
+  },
+  "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.75.0"
+  }
+}

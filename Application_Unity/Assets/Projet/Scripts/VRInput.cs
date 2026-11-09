@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRInput.cs — COUCHE D'ENTRÉE (fondation de tout le module VR)
 //
@@ -221,6 +222,35 @@ namespace RemodelerLeReel.VR
         {
             if (dev == null || string.IsNullOrEmpty(nameOrAlias)) return null;
 
+            // Cache (absences comprises) : sans lui, chaque image refaisait le balayage complet
+            // ci-dessous pour chaque appareil sans ce contrôle (stick au repos : tous les replis
+            // de VRStickReader / VRButtonReader / VRGrabHand s'exécutent). Vidé quand un appareil
+            // est branché, débranché ou reconfiguré.
+            AbonnerAuxChangements();
+            var cle = (dev.deviceId, nameOrAlias, typeof(T));
+            if (s_cache.TryGetValue(cle, out InputControl enCache)) return enCache as T;
+            T trouve = Chercher<T>(dev, nameOrAlias);
+            s_cache[cle] = trouve;
+            return trouve;
+        }
+
+        private static readonly Dictionary<(int, string, Type), InputControl> s_cache = new Dictionary<(int, string, Type), InputControl>();
+        private static bool s_abonne;
+
+        /// <summary>Chaque lancement repart d'un cache vide (même sans rechargement du domaine).</summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ViderAuLancement() => s_cache.Clear();
+
+        private static void AbonnerAuxChangements()
+        {
+            if (s_abonne) return;
+            s_abonne = true;
+            InputSystem.onDeviceChange += (appareil, changement) => s_cache.Clear();
+        }
+
+        /// <summary>Recherche effective (sans cache) : chemin, puis balayage des noms et alias.</summary>
+        private static T Chercher<T>(InputDevice dev, string nameOrAlias) where T : InputControl
+        {
             // 1. Résolution par chemin (gère nativement les alias).
             try
             {

@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRUtils.cs — PETITS OUTILS PARTAGÉS (hiérarchie, matériaux, physique)
 //

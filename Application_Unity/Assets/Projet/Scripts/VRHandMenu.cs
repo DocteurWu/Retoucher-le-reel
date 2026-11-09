@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRHandMenu.cs — MENU AU POIGNET GAUCHE AUTONOME (DUPLIQUER / SUPPRIMER)
 //
@@ -107,19 +108,29 @@ namespace RemodelerLeReel.VR
 
         [Header("--- Raccourcis doigts (mode mains) ---")]
         [Tooltip("Remplacer les boutons par « toucher un doigt gauche avec l'index droit » : " +
-                 "index = Dupliquer, majeur = Supprimer, annulaire = Récupérer")]
+                 "index = Dupliquer, majeur = Supprimer, annulaire = Récupérer (sortir de la bulle)")]
         public bool useFingerTaps = true;
 
         [Tooltip("Distance (m) entre l'index droit et le bout d'un doigt gauche pour déclencher l'action")]
-        public float fingerTapDistance = 0.02f;
+        public float fingerTapDistance = 0.025f;
 
         [Tooltip("Diamètre (m) des pastilles affichées au bout des doigts gauches")]
         public float fingerMarkerSize = 0.012f;
+
+        [Tooltip("Décalage (m) des pastilles vers l'extérieur du bout des doigts (dans le prolongement de chaque doigt)")]
+        [Range(0f, 0.08f)]
+        public float fingerMarkerOffset = 0.035f;
 
         private bool FingerTapMode => useFingerTaps && VRModalityManager.IsHandMode;
 
         // Correspondance doigt gauche → action (0 = Dupliquer, 1 = Supprimer, 2 = Récupérer)
         private static readonly XRHandFingerID[] s_TapFingers = { XRHandFingerID.Index, XRHandFingerID.Middle, XRHandFingerID.Ring };
+
+        /// <summary>
+        /// Le même doigt doit rester visé ce temps (s) avant d'agir : les bouts de doigts ne sont
+        /// qu'à ~2 cm, et en allant vers le majeur on frôlait l'index (duplication involontaire).
+        /// </summary>
+        private const float TapStable = 0.08f;
         private static readonly Color[] s_TapColors =
         {
             new Color(0.20f, 0.65f, 1.00f, 1f), // Dupliquer : bleu (comme l'ancien bouton)
@@ -128,6 +139,8 @@ namespace RemodelerLeReel.VR
         };
         private Transform[] _tapMarkers;
         private int _tapInside = -1;
+        private int _tapCandidat = -1;
+        private float _tapCandidatDepuis;
 
         private Transform _bubble;
         private Rigidbody _stored;
@@ -158,6 +171,7 @@ namespace RemodelerLeReel.VR
 
         private void Awake()
         {
+            if (fingerMarkerOffset <= 0f) fingerMarkerOffset = 0.035f;
             EnsureAudioSource();
             EnsureHierarchyAndUI();
             EnsureEventSystem();
@@ -182,9 +196,66 @@ namespace RemodelerLeReel.VR
             go.transform.localScale = Vector3.zero;
 
             var rend = go.GetComponent<MeshRenderer>();
-            rend.sharedMaterial = VRUtils.CreateUnlitMaterial(new Color(0.45f, 0.85f, 1f, 0.18f));
+            _matBulle = VRUtils.CreateUnlitMaterial(CouleurBulle);
+            rend.sharedMaterial = _matBulle;
             rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             _bubble = go.transform;
+        }
+
+        // --- Réaction « je peux le prendre » (objet tenu à portée de la bulle) ---
+        private static readonly Color CouleurBulle = new Color(0.45f, 0.85f, 1f, 0.18f);
+        private static readonly Color CouleurBullePrete = new Color(0.55f, 1f, 0.85f, 0.42f);
+        private Material _matBulle;
+        private bool _pretAAccepter;
+        private float _debutAcceptation = -10f;
+        private float _intensiteAcceptation; // 0 = repos, 1 = prête (fondu)
+
+        /// <summary>
+        /// Vrai si un objet tenu est assez près pour être rangé au lâcher (même règle que la
+        /// capture : distance à sa SURFACE &lt; bubbleCaptureRadius). Donne la main qui le tient.
+        /// </summary>
+        private bool ObjetTenuAPortee(Vector3 centre, out VRGrabHand main)
+        {
+            main = null;
+            for (int i = 0; i < VRGrabHand.AllHands.Count; i++)
+            {
+                VRGrabHand h = VRGrabHand.AllHands[i];
+                if (h == null || h.GrabbedBody == null) continue;
+                if (DistanceToBody(h.GrabbedBody, centre) < bubbleCaptureRadius)
+                {
+                    main = h;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Confirme au joueur que la bulle accepte l'objet qu'il approche : petit « pop » élastique
+        /// à l'entrée dans la zone, puis la bulle respire, grossit un peu et s'éclaire tant que
+        /// l'objet y reste ; son doux + petite vibration dans la main qui le tient. Rien quand
+        /// la bulle est déjà occupée.
+        /// </summary>
+                // [LH] Effet elastique d acceptation et feedback haptique/sonore (Louai H.)
+        private float ReactionAcceptation(bool visible, Vector3 centre)
+        {
+            VRGrabHand main = null;
+            bool pret = visible && _stored == null && ObjetTenuAPortee(centre, out main);
+            if (pret && !_pretAAccepter)
+            {
+                _debutAcceptation = Time.unscaledTime;
+                if (main != null) main.TriggerHaptic(0.35f, 0.05f, 2);
+                VRSons.Jouer(VRSon.Rangement, centre, 0.35f, 1.6f);
+            }
+            _pretAAccepter = pret;
+            _intensiteAcceptation = Mathf.MoveTowards(_intensiteAcceptation, pret ? 1f : 0f, Time.unscaledDeltaTime / 0.15f);
+
+            if (_matBulle != null) _matBulle.color = Color.Lerp(CouleurBulle, CouleurBullePrete, _intensiteAcceptation);
+
+            float depuis = Time.unscaledTime - _debutAcceptation;
+            float pop = pret ? Mathf.Exp(-depuis * 9f) * Mathf.Sin(depuis * 28f) * 0.25f : 0f;
+            float respiration = 0.05f * _intensiteAcceptation * Mathf.Sin(Time.unscaledTime * 9f);
+            return 1f + 0.15f * _intensiteAcceptation + pop + respiration;
         }
 
         private void UpdateBubble()
@@ -194,9 +265,9 @@ namespace RemodelerLeReel.VR
             // La bulle est visible quand le menu est ouvert, ou tant qu'elle contient un objet.
             float show = _stored != null ? 1f : _currentScaleFactor;
             _bubble.localPosition = bubbleLocalOffset;
-            _bubble.localScale = Vector3.one * (bubbleDiameter * show);
             _bubble.gameObject.SetActive(show > 0.02f);
             Vector3 center = _bubble.position;
+            _bubble.localScale = Vector3.one * (bubbleDiameter * show * ReactionAcceptation(_bubble.gameObject.activeSelf, center));
 
             // 1. Capture : un objet vient d'être lâché près de la bulle, menu ouvert.
             for (int i = 0; i < VRGrabHand.AllHands.Count; i++)
@@ -235,12 +306,15 @@ namespace RemodelerLeReel.VR
             _storedHasLocalBounds = false;
             _storedLocalBounds = WorldToLocalBounds(body.transform, GetBounds(body));
             _storedHasLocalBounds = true;
+            if (!body.isKinematic) // déjà cinématique (calé par le jeu de mémoire…) : Unity refuse une vitesse
+            {
 #if UNITY_6000_0_OR_NEWER
-            body.linearVelocity = Vector3.zero;
+                body.linearVelocity = Vector3.zero;
 #else
-            body.velocity = Vector3.zero;
+                body.velocity = Vector3.zero;
 #endif
-            body.angularVelocity = Vector3.zero;
+                body.angularVelocity = Vector3.zero;
+            }
             body.isKinematic = true;
             body.useGravity = false;
 
@@ -264,7 +338,25 @@ namespace RemodelerLeReel.VR
         /// <summary>L'objet de la bulle vient d'en être sorti. Écouté par la narration.</summary>
         public static event System.Action<Rigidbody> ObjetRecupere;
 
+        /// <summary>L'objet rangé dans la bulle en ce moment (null si elle est vide).</summary>
+        public Rigidbody ObjetDansLaBulle => _stored;
+
         /// <summary>Croix : l'objet reprend sa taille et retourne dans la main droite.</summary>
+        /// <summary>
+        /// Sort un objet de la bulle sans le mettre en main : taille et colliders rendus.
+        /// Faux s'il n'y était pas. Pour les scripts qui vont placer ou détruire l'objet.
+        /// </summary>
+        public bool SortirDeLaBulle(Rigidbody body)
+        {
+            if (body == null || _stored != body) return false;
+            _stored = null;
+            SetLossyScale(body.transform, _storedLossyScale);
+            foreach (var c in _storedColliders) if (c != null) c.enabled = true;
+            _storedColliders.Clear();
+            Physics.SyncTransforms();
+            return true;
+        }
+
         public void OnReleaseStoredClicked()
         {
             if (_stored == null) return;
@@ -378,7 +470,9 @@ namespace RemodelerLeReel.VR
                 baseColor = img.color;
                 _buttonBaseColors[button] = baseColor;
             }
-            img.color = enabledLook ? baseColor : new Color(baseColor.r * 0.4f, baseColor.g * 0.4f, baseColor.b * 0.4f, 0.6f);
+            Color voulue = enabledLook ? baseColor : new Color(baseColor.r * 0.4f, baseColor.g * 0.4f, baseColor.b * 0.4f, 0.6f);
+            // Écrite seulement si elle change : chaque écriture force la reconstruction du canvas (appelé à chaque image).
+            if (img.color != voulue) img.color = voulue;
         }
 
         private void ShrinkStored()
@@ -396,13 +490,18 @@ namespace RemodelerLeReel.VR
         /// de ce qu'on voit (le fruit test : ~14 cm). L'objet rangé a ses colliders coupés :
         /// on reprend la boîte mémorisée au rangement.
         /// </summary>
+        private readonly List<Renderer> _rendusBornes = new List<Renderer>();
+        private readonly List<Collider> _collidersBornes = new List<Collider>();
+
         private Bounds GetBounds(Rigidbody body)
         {
-            var renderers = body.GetComponentsInChildren<Renderer>();
-            if (renderers.Length > 0)
+            // Listes réutilisées : appelé à chaque image tant qu'un objet flotte dans la bulle.
+            List<Renderer> renderers = _rendusBornes;
+            body.GetComponentsInChildren(renderers);
+            if (renderers.Count > 0)
             {
                 Bounds rb = renderers[0].bounds;
-                for (int i = 1; i < renderers.Length; i++) rb.Encapsulate(renderers[i].bounds);
+                for (int i = 1; i < renderers.Count; i++) rb.Encapsulate(renderers[i].bounds);
                 return rb;
             }
 
@@ -411,7 +510,8 @@ namespace RemodelerLeReel.VR
 
             bool found = false;
             Bounds b = new Bounds(body.position, Vector3.zero);
-            foreach (var c in body.GetComponentsInChildren<Collider>())
+            body.GetComponentsInChildren(_collidersBornes);
+            foreach (var c in _collidersBornes)
             {
                 if (!c.enabled) continue;
                 if (!found) { b = c.bounds; found = true; }
@@ -497,7 +597,7 @@ namespace RemodelerLeReel.VR
             float best = fingerTapDistance;
             for (int i = 0; i < s_TapFingers.Length; i++)
             {
-                bool hasTip = VRHandGestures.TryGetFingerTipWorld(XRNode.LeftHand, s_TapFingers[i], out Vector3 leftTip);
+                bool hasTip = VRHandGestures.TryGetFingerTipWorld(XRNode.LeftHand, s_TapFingers[i], out Vector3 leftTip, fingerMarkerOffset);
                 bool show = active && hasTip;
                 if (_tapMarkers[i].gameObject.activeSelf != show) _tapMarkers[i].gameObject.SetActive(show);
                 if (!show) continue;
@@ -505,26 +605,40 @@ namespace RemodelerLeReel.VR
                 _tapMarkers[i].position = leftTip;
                 if (!hasRight) continue;
 
-                // Doigt le plus proche sous le seuil : les bouts de doigts ne sont qu'à ~2 cm
-                // les uns des autres, on évite ainsi de déclencher le voisin.
+                // Doigt le plus proche sous le seuil : les pastilles décalées vers l'extérieur
+                // s'écartent naturellement en éventail, évitant de déclencher le voisin.
                 float d = Vector3.Distance(rightTip, leftTip);
                 if (d < best) { best = d; hit = i; }
             }
 
+            if (hit != _tapCandidat)
+            {
+                _tapCandidat = hit;
+                _tapCandidatDepuis = Time.unscaledTime;
+            }
+
             // Front montant uniquement : il faut écarter l'index pour toucher à nouveau.
-            if (hit >= 0 && hit != _tapInside && Time.unscaledTime - _lastFingerPress > 0.35f)
+            if (hit < 0)
+            {
+                _tapInside = -1;
+            }
+            else if (hit != _tapInside && Time.unscaledTime - _tapCandidatDepuis >= TapStable
+                     && Time.unscaledTime - _lastFingerPress > 0.35f)
             {
                 _lastFingerPress = Time.unscaledTime;
+                _tapInside = hit;
                 if (hit == 0) OnDuplicateClicked();
                 else if (hit == 1) OnDeleteClicked();
                 else OnReleaseStoredClicked();
             }
-            _tapInside = hit;
         }
 
         private void EnsureTapMarkers()
         {
-            if (_tapMarkers != null) return;
+            // Pastilles complètes et vivantes, sinon on les refait. Journal du PC VR (2026-11-06) :
+            // 880 IndexOutOfRangeException ici, pastilles perdues (rechargement du code en Play ?).
+            if (_tapMarkers != null && _tapMarkers.Length == s_TapFingers.Length && System.Array.TrueForAll(_tapMarkers, m => m != null)) return;
+            if (_tapMarkers != null) foreach (var ancien in _tapMarkers) if (ancien != null) Destroy(ancien.gameObject);
             _tapMarkers = new Transform[s_TapFingers.Length];
             for (int i = 0; i < s_TapFingers.Length; i++)
             {
@@ -905,7 +1019,7 @@ namespace RemodelerLeReel.VR
             if (FingerTapMode) PollFingerTaps();
             else
             {
-                if (_tapMarkers != null) foreach (var m in _tapMarkers) m.gameObject.SetActive(false);
+                if (_tapMarkers != null) foreach (var m in _tapMarkers) if (m != null) m.gameObject.SetActive(false);
                 PollFingerPress();
             }
         }

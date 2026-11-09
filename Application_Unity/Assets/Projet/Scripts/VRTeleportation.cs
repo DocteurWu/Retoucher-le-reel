@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRTeleportation.cs — TÉLÉPORTATION BALISTIQUE (arc parabolique)
 //
@@ -198,6 +199,35 @@ namespace RemodelerLeReel.VR
         [Tooltip("Layers où l'on peut se téléporter (mettre seulement le sol, PAS Everything)")]
         public LayerMask teleportLayerMask = 1 << 6; // Ground
 
+        [Tooltip("Layers qui bloquent l'arc de téléportation sans permettre d'y atterrir (murs, obstacles).")]
+        public LayerMask blockingLayerMask = (1 << 0) | (1 << 8); // Default + Environment
+
+        /// <summary>Tampon des impacts d'un segment de l'arc (pas d'allocation pendant la visée).</summary>
+        private static readonly RaycastHit[] s_impacts = new RaycastHit[16];
+
+        /// <summary>
+        /// Impact le plus proche sur ce segment, en ignorant le rig lui-même : le calque Default
+        /// bloque l'arc, et les mains, les manettes ou l'objet tenu (enfants du rig) y sont souvent.
+        /// Sans ce filtre, l'arc s'arrêtait dans la main qui vise.
+        /// </summary>
+        private bool ImpactHorsDuRig(Vector3 origine, Vector3 direction, float distance, LayerMask masque, out RaycastHit impact)
+        {
+            impact = default;
+            int n = Physics.RaycastNonAlloc(origine, direction, s_impacts, distance, masque, QueryTriggerInteraction.Ignore);
+            float meilleure = float.MaxValue;
+            bool trouve = false;
+            for (int i = 0; i < n; i++)
+            {
+                RaycastHit h = s_impacts[i];
+                if (h.distance >= meilleure) continue;
+                if (xrOriginTransform != null && h.collider.transform.IsChildOf(xrOriginTransform)) continue;
+                meilleure = h.distance;
+                impact = h;
+                trouve = true;
+            }
+            return trouve;
+        }
+
         /// <summary>
         /// Pente maximale acceptable du sol, en degrés par rapport à l'horizontale.
         /// Au-delà (mur, meuble incliné), la destination est refusée (arc rouge).
@@ -280,6 +310,13 @@ namespace RemodelerLeReel.VR
             _thumbstickAction.AddBinding($"<XRController>{{{handSide}}}/thumbstick");
             _thumbstickAction.AddBinding($"<XRController>{{{handSide}}}/primary2DAxis");
 
+            if (blockingLayerMask.value == 0)
+            {
+                int env = LayerMask.NameToLayer("Environment");
+                int envMask = env >= 0 ? (1 << env) : 0;
+                blockingLayerMask = (1 << 0) | envMask;
+            }
+
             SetupLineRenderer();
             SetupReticle();
         }
@@ -314,6 +351,7 @@ namespace RemodelerLeReel.VR
         ///   RELÂCHEMENT: stick ramené sous le seuil → on téléporte si la cible est
         ///                valide, puis on range l'affichage.
         /// </summary>
+                // [Louai H.] Boucle d actualisation de l arc de visee et detection d impact
         private void Update()
         {
             // Vérification du mode de locomotion configuré dans le menu.
@@ -770,20 +808,21 @@ namespace RemodelerLeReel.VR
                 // QueryTriggerInteraction.Ignore : les-trigger (sphères de préhension
                 // des manettes) ne doivent JAMAIS pouvoir servir de destination, ni
                 // interrompre l'arc. Sinon on se téléporte sur une manette.
-                if (Physics.Raycast(currentPos, segmentDir.normalized, out RaycastHit hit,
-                                    segmentDist, teleportLayerMask, QueryTriggerInteraction.Ignore))
+                LayerMask raycastMask = teleportLayerMask | blockingLayerMask;
+                if (ImpactHorsDuRig(currentPos, segmentDir / segmentDist, segmentDist, raycastMask, out RaycastHit hit))
                 {
-                    _arcPoints.Add(hit.point); // L'arc s'arrête exactement sur l'impact.
+                    _arcPoints.Add(hit.point); // L'arc s'arrête exactement sur l'impact (mur ou sol).
 
-                    // Vérifier si la surface est suffisamment plate pour y marcher
+                    // Vérifier si la surface est autorisée (sol) et suffisamment plate pour y marcher
+                    bool isGround = ((1 << hit.collider.gameObject.layer) & teleportLayerMask) != 0;
                     float slopeAngle = Vector3.Angle(hit.normal, Vector3.up);
-                    if (slopeAngle <= maxSurfaceSlopeAngle)
+                    if (isGround && slopeAngle <= maxSurfaceSlopeAngle)
                     {
                         _hasValidTarget = true;
                         _targetPosition = hit.point;
                         _targetNormal = hit.normal;
                     }
-                    break; // Fin de la simulation : on a touché quelque chose.
+                    break; // Fin de la simulation : on a touché quelque chose (mur ou sol).
                 }
 
                 // Pas d'impact : on continue la parabole.
@@ -849,6 +888,12 @@ namespace RemodelerLeReel.VR
             {
                 cameraOffset = headCamera.transform.position - xrOriginTransform.position;
                 cameraOffset.y = 0f; // On ne compense que sur le plan horizontal XZ
+            }
+
+            if (VRLimitesPiece.Interieur.HasValue)
+            {
+                Vector2 cl = VRLimitesPiece.Contraindre(new Vector2(destination.x, destination.z), VRLimitesPiece.Interieur.Value, 0.2f);
+                destination = new Vector3(cl.x, destination.y, cl.y);
             }
 
             Vector3 newPosition = new Vector3(

@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRDuplicateDelete.cs — DUPLIQUER / SUPPRIMER L'OBJET TENU
 //
@@ -253,6 +254,7 @@ namespace RemodelerLeReel.VR
         /// de la manette) et dopplerLevel = 0 pour éviter les variations de hauteur quand
         /// la main bouge.
         /// </summary>
+                // [LH] Registre de suppression / duplication d objets 3D interactifs
         private void Awake()
         {
             _audio = actionAudio != null ? actionAudio : gameObject.AddComponent<AudioSource>();
@@ -274,6 +276,7 @@ namespace RemodelerLeReel.VR
         /// Les boutons sont lus MÊME si aucun objet n'est tenu : ainsi, si le joueur
         /// appuie sans rien tenir, on peut (en mode diagnostic) l'expliquer dans la Console.
         /// </summary>
+                // [Louai Hamlat] Detection du geste de suppression / duplication associe
         private void Update()
         {
             ResolveOtherHand();
@@ -463,15 +466,15 @@ namespace RemodelerLeReel.VR
                 return;
             }
 
-            // Un clone de clone reste rattaché à l'ORIGINAL de la famille :
-            // c'est lui qui porte le plafond. Sans cela, on pourrait contourner
-            // la limite en dupliquant toujours le dernier clone.
+            // Un clone de clone reste dans la FAMILLE de l'original : c'est elle qui
+            // porte le plafond, même après la suppression de l'original. Sans cela,
+            // on pourrait contourner la limite en dupliquant toujours le dernier clone.
             GameObject root = ResolveSourceRoot(body.gameObject);
 
             // PLAFOND : refuse de dépasser le nombre maximal d'exemplaires.
             if (maxInstancesPerSource > 0)
             {
-                int existing = VRCloneOrigin.CountInstances(root);
+                int existing = VRCloneOrigin.CountInstances(body.gameObject);
                 if (existing >= maxInstancesPerSource)
                 {
                     Debug.LogWarning(
@@ -496,7 +499,7 @@ namespace RemodelerLeReel.VR
                 parent = null;
             }
 
-GameObject source = (marker != null && marker.duplicationPrefab != null)
+            GameObject source = (marker != null && marker.duplicationPrefab != null)
                 ? marker.duplicationPrefab
                 : body.gameObject;
 
@@ -528,7 +531,7 @@ GameObject source = (marker != null && marker.duplicationPrefab != null)
 
             // Le clone appartient à la même famille que l'original : c'est ce
             // qui permet de compter les exemplaires et d'appliquer le plafond.
-            VRCloneOrigin.Attach(clone, root);
+            VRCloneOrigin.Attach(clone, body.gameObject);
 
             if (clone.TryGetComponent(out Rigidbody cloneBody))
             {
@@ -681,8 +684,7 @@ GameObject source = (marker != null && marker.duplicationPrefab != null)
             // exemplaire vivant d'un objet si protectLastInstance est activé.
             if (protectLastInstance)
             {
-                GameObject root = ResolveSourceRoot(body.gameObject);
-                int remaining = VRCloneOrigin.CountInstances(root);
+                int remaining = VRCloneOrigin.CountInstances(body.gameObject);
                 if (remaining <= 1)
                 {
                     Debug.LogWarning(

@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRGestureDebug.cs — ATELIER DE GESTES (outil de mise au point, à retirer en jeu)
 //

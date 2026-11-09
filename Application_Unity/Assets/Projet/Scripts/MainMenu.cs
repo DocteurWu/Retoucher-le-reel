@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  MainMenu.cs — MENU D'ENTRÉE (canvas world-space, piloté au laser VR)
 //
@@ -12,8 +13,11 @@
 //      l'index) pour valider.
 //    • Sol invisible créé au lancement si la scène n'en a pas (le splat n'a pas
 //      de collider) : téléportation et escalade marchent aussi dans le menu.
-//    • Bouton « Jouer » : charge la scène de jeu (gameSceneName).
+//    • Bouton « Jouer » coupé en deux au lancement : « Jeu de base » (gameSceneName) à
+//      gauche, « Jeu de mémoire » (memorySceneName, Scene3) à droite, copie du bouton.
 //    • Bouton du mode : bascule Continu ↔ Téléportation (VRLocomotionSettings).
+//    • Bouton « Tutoriel » : lance / arrête le tutoriel complet des gestes, ici, dans le
+//      menu (TutorielMenu). Créé au lancement en copiant le bouton du mode, au-dessus de lui.
 //
 //  À POSER SUR : le Canvas du menu. Câbler locomotionButton, playButton et les
 //  textes (TMP ou Text).
@@ -36,6 +40,7 @@ using CommonUsages = UnityEngine.XR.CommonUsages;
 using XRInputDevice = UnityEngine.XR.InputDevice;
 using InputDevice = UnityEngine.InputSystem.InputDevice;
 using RemodelerLeReel.VR;
+using RemodelerLeReel.Jeu;
 
 namespace RemodelerLeReel.UI
 {
@@ -63,6 +68,9 @@ namespace RemodelerLeReel.UI
         [Header("--- Scène de jeu ---")]
         [Tooltip("Nom exact de la scène chargée par le bouton Jouer (sans .unity)")]
         public string gameSceneName = "Scene.de.base1";
+
+        [Tooltip("Scène du jeu de mémoire, lancée par la moitié droite du bouton Jouer. Vide = bouton Jouer entier.")]
+        public string memorySceneName = "Scene3";
 
         // ---------------------------------------------------------------------
         // WIDGETS (Boutons et Textes)
@@ -122,7 +130,7 @@ namespace RemodelerLeReel.UI
         public bool createInvisibleFloor = true;
 
         [Tooltip("Côté du sol invisible (m) : borne aussi la zone où le joueur peut aller.")]
-        [Range(2f, 40f)] public float invisibleFloorSize = 10f;
+        [Range(2f, 40f)] public float invisibleFloorSize = 24f;
 
         [Tooltip("Couleur du laser et du bouton quand la validation par maintien est presque atteinte")]
         public Color dwellCompleteColor = new Color(0.3f, 1f, 0.45f, 1f);
@@ -205,8 +213,30 @@ namespace RemodelerLeReel.UI
             floor.transform.position = feet - Vector3.up * 0.05f;
             BoxCollider box = floor.AddComponent<BoxCollider>();
             box.size = new Vector3(invisibleFloorSize, 0.1f, invisibleFloorSize);
-            Physics.SyncTransforms(); // autoSyncTransforms = 0 : le collider doit exister dès cette frame
-            Debug.Log("[MainMenu] Sol invisible créé (" + invisibleFloorSize + " m) : téléportation et escalade actives dans le menu.");
+
+            // 4 Murs de sécurité autour du sol pour empêcher de se téléporter en dehors
+            int env = LayerMask.NameToLayer("Environment");
+            int wallLayer = env >= 0 ? env : 0;
+            float half = invisibleFloorSize * 0.5f;
+            float wallH = 6f;
+            float wallThick = 0.3f;
+            CreerMurMenu(floor.transform, "Mur_Ouest_Menu", wallLayer, new Vector3(feet.x - half - wallThick * 0.5f, wallH * 0.5f, feet.z), new Vector3(wallThick, wallH, invisibleFloorSize + wallThick * 2f));
+            CreerMurMenu(floor.transform, "Mur_Est_Menu", wallLayer, new Vector3(feet.x + half + wallThick * 0.5f, wallH * 0.5f, feet.z), new Vector3(wallThick, wallH, invisibleFloorSize + wallThick * 2f));
+            CreerMurMenu(floor.transform, "Mur_Sud_Menu", wallLayer, new Vector3(feet.x, wallH * 0.5f, feet.z - half - wallThick * 0.5f), new Vector3(invisibleFloorSize + wallThick * 2f, wallH, wallThick));
+            CreerMurMenu(floor.transform, "Mur_Nord_Menu", wallLayer, new Vector3(feet.x, wallH * 0.5f, feet.z + half + wallThick * 0.5f), new Vector3(invisibleFloorSize + wallThick * 2f, wallH, wallThick));
+
+            Physics.SyncTransforms(); // autoSyncTransforms = 0 : les colliders doivent exister dès cette frame
+            Debug.Log("[MainMenu] Sol et murs invisibles créés (" + invisibleFloorSize + " m) : téléportation confinée dans le menu.");
+        }
+
+        private static void CreerMurMenu(Transform parent, string nom, int layer, Vector3 position, Vector3 taille)
+        {
+            GameObject wall = new GameObject(nom);
+            wall.layer = layer;
+            wall.transform.SetParent(parent, false);
+            wall.transform.position = position;
+            BoxCollider box = wall.AddComponent<BoxCollider>();
+            box.size = taille;
         }
 
         private void BuildWidgets()
@@ -214,6 +244,203 @@ namespace RemodelerLeReel.UI
             _widgets.Clear();
             RegisterWidget(locomotionButton, ToggleLocomotionMode, locomotionNormalColor, locomotionHoverColor);
             RegisterWidget(playButton, ActivatePlay, playNormalColor, playHoverColor);
+            DiviserBoutonJouer();
+            CreerBoutonTutoriel();
+        }
+
+        // =====================================================================
+        // JEU DE BASE / JEU DE MÉMOIRE
+        // =====================================================================
+
+        [Header("--- Bouton Jeu de mémoire ---")]
+        public Color memoireNormalColor = new Color(0.75f, 0.45f, 0.15f);
+        public Color memoireHoverColor = new Color(0.95f, 0.62f, 0.25f);
+
+        /// <summary>Écart entre les deux moitiés du bouton Jouer, en unités du canvas.</summary>
+        private const float EcartBoutonsJeu = 20f;
+
+        /// <summary>
+        /// Coupe le bouton Jouer en deux : la moitié gauche garde son rôle (« Jeu de base »),
+        /// une copie à droite lance le jeu de mémoire. Fait au lancement : la scène Menu
+        /// n'a pas à être retouchée.
+        /// </summary>
+                // [Louai H.] Partitionnement dynamique du point d entree menu principal
+        private void DiviserBoutonJouer()
+        {
+            if (string.IsNullOrWhiteSpace(memorySceneName) || playButton == null || !Application.isPlaying) return;
+            if (!(playButton is RectTransform gauche))
+            {
+                Debug.LogWarning("[MainMenu] Bouton Jouer sans RectTransform : pas de bouton « Jeu de mémoire ».", this);
+                return;
+            }
+
+            GameObject copie = Instantiate(playButton.gameObject, playButton.parent);
+            copie.name = "Bouton_JeuMemoire";
+            RectTransform droite = (RectTransform)copie.transform;
+
+            Vector2 taille = gauche.sizeDelta;
+            float moitie = (taille.x - EcartBoutonsJeu) * 0.5f;
+            float decalage = (moitie + EcartBoutonsJeu) * 0.5f;
+            Vector2 centre = gauche.anchoredPosition;
+            foreach (RectTransform r in new[] { gauche, droite })
+            {
+                r.sizeDelta = new Vector2(moitie, taille.y);
+                BoxCollider boite = r.GetComponent<BoxCollider>();
+                if (boite != null) boite.size = new Vector3(moitie, taille.y, boite.size.z);
+            }
+            gauche.anchoredPosition = centre - new Vector2(decalage, 0f);
+            droite.anchoredPosition = centre + new Vector2(decalage, 0f);
+
+            Libeller(playButton, "Jeu de base");
+            Libeller(droite, "Jeu de mémoire");
+            RegisterWidget(droite, () => ChargerScene(memorySceneName), memoireNormalColor, memoireHoverColor);
+        }
+
+        /// <summary>Texte d'un bouton (TMP ou TextMesh), réduit si besoin pour tenir dans la moitié.</summary>
+        private static void Libeller(Transform bouton, string texte)
+        {
+            TextMeshProUGUI tmp = bouton.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (tmp != null)
+            {
+                tmp.text = texte;
+                tmp.textWrappingMode = TextWrappingModes.NoWrap; // une ligne : l'auto-taille réduit la police
+                tmp.fontSizeMax = tmp.fontSize;
+                tmp.fontSizeMin = Mathf.Min(tmp.fontSize, 12f);
+                tmp.enableAutoSizing = true;
+                return;
+            }
+            TextMesh legacy = bouton.GetComponentInChildren<TextMesh>(true);
+            if (legacy != null) legacy.text = texte;
+        }
+
+        // =====================================================================
+        // TUTORIEL DES GESTES
+        // =====================================================================
+
+        [Header("--- Bouton Tutoriel ---")]
+        [Tooltip("Créer le bouton « Tutoriel » au-dessus du bouton du mode (tutoriel des gestes dans le menu).")]
+        public bool boutonTutoriel = true;
+        public Color tutorielNormalColor = new Color(0.45f, 0.3f, 0.75f);
+        public Color tutorielHoverColor = new Color(0.62f, 0.45f, 0.95f);
+
+        /// <summary>Place du bouton, en unités du canvas : entre le titre (y = 210) et le bouton du mode (y = 25).</summary>
+        private static readonly Vector2 PositionBoutonTutoriel = new Vector2(0f, 120f), TailleBoutonTutoriel = new Vector2(560f, 70f);
+
+        private TutorielMenu _tutoriel;
+        private TextMeshProUGUI _libelleTutoriel;
+
+        /// <summary>Vrai pendant le déroulement du tutoriel des gestes.</summary>
+        public bool TutorielEnCours => (_tutoriel != null && _tutoriel.EnCours) || TutorielGestes.EstEnCours;
+
+        private void CreerBoutonTutoriel()
+        {
+            if (!boutonTutoriel || locomotionButton == null || !Application.isPlaying) return;
+
+            GameObject go = Instantiate(locomotionButton.gameObject, locomotionButton.parent);
+            go.name = "Bouton_Tutoriel";
+            if (go.transform is RectTransform rect)
+            {
+                rect.anchoredPosition = PositionBoutonTutoriel;
+                rect.sizeDelta = TailleBoutonTutoriel;
+            }
+            BoxCollider boite = go.GetComponent<BoxCollider>();
+            if (boite != null) boite.size = new Vector3(TailleBoutonTutoriel.x, TailleBoutonTutoriel.y, boite.size.z);
+
+            _libelleTutoriel = go.GetComponentInChildren<TextMeshProUGUI>(true);
+            _tutoriel = gameObject.AddComponent<TutorielMenu>();
+            _tutoriel.Change += AfficherBoutonTutoriel;
+            RegisterWidget(go.transform, () => _tutoriel.Basculer(), tutorielNormalColor, tutorielHoverColor);
+            if (_widgets.Count > 0 && _widgets[_widgets.Count - 1].Transform == go.transform) _widgetTutoriel = _widgets[_widgets.Count - 1];
+            AfficherBoutonTutoriel();
+        }
+
+        /// <summary>
+        /// Validation d'un bouton : l'entrée (« tir » du pouce ou gâchette) vient d'être enfoncée
+        /// (front montant : enfoncée maintenant, pas à l'image d'avant) ET le bouton est visé.
+        /// Une entrée restée enfoncée ne revalide jamais ; d'où <c>dejaEnfoncee = vrai</c> au
+        /// lancement du tutoriel, pour que le geste qui l'a lancé ne l'arrête pas aussitôt.
+        /// Calcul pur, testé en EditMode.
+        /// </summary>
+        public static bool ValideAuFrontMontant(bool enfonceeMaintenant, bool dejaEnfoncee, bool boutonVise)
+        {
+            return enfonceeMaintenant && !dejaEnfoncee && boutonVise;
+        }
+
+        /// <summary>Le bouton « Tutoriel des gestes » / « Arrêter le tutoriel » (seul visable pendant le tutoriel).</summary>
+        private Widget _widgetTutoriel;
+
+        /// <summary>Fronts de la gâchette des manettes pendant le tutoriel (séparés de ceux du contact direct).</summary>
+        private bool[] _gachetteTutoriel;
+
+        /// <summary>
+        /// Pendant le tutoriel : visée (signe du pistolet) et validation (« tir » du pouce, ou
+        /// gâchette) du seul bouton du tutoriel, pour pouvoir l'arrêter depuis le casque. Le
+        /// laser n'apparaît que s'il touche ce bouton.
+        /// </summary>
+        private void ViserBoutonTutoriel()
+        {
+            if (_hands == null || _widgetTutoriel == null || _widgetTutoriel.Collider == null) return;
+            if (_gachetteTutoriel == null || _gachetteTutoriel.Length != _hands.Length)
+            {
+                _gachetteTutoriel = new bool[_hands.Length];
+                for (int i = 0; i < _gachetteTutoriel.Length; i++) _gachetteTutoriel[i] = true; // relâcher d'abord
+            }
+
+            for (int i = 0; i < _hands.Length; i++)
+            {
+                if (_hands[i] == null) continue;
+                XRNode node = _hands[i].handNode;
+                bool pistolet = TryGetHandFingerGun(node, out Vector3 origine, out Vector3 direction, out bool tir);
+                RaycastHit impact = default;
+                bool vise = pistolet && _widgetTutoriel.Collider.Raycast(new Ray(origine, direction), out impact, rayMaxDistance);
+
+                if (vise)
+                {
+                    ShowPointer(i, origine, impact.point, true);
+                    SetWidgetColor(_widgetTutoriel, true);
+                    _recentHover[i] = _widgetTutoriel;
+                    _recentHoverTime[i] = Time.time;
+                }
+                else
+                {
+                    HidePointer(i);
+                }
+
+                bool suivie = VRHandGestures.IsTracked(node);
+                bool declenche;
+                if (suivie)
+                {
+                    // Rabattre le pouce fait dévier l'index : le bouton visé juste avant compte aussi.
+                    bool viseRecemment = vise || (_recentHover[i] == _widgetTutoriel && Time.time - _recentHoverTime[i] <= ShootAimMemory);
+                    declenche = handShootClick && ValideAuFrontMontant(pistolet && tir, _wasShooting[i], viseRecemment);
+                    _wasShooting[i] = pistolet && tir;
+                }
+                else
+                {
+                    bool gachette = ReadPress(node);
+                    declenche = ValideAuFrontMontant(gachette, _gachetteTutoriel[i], vise);
+                    _gachetteTutoriel[i] = gachette;
+                }
+
+                if (declenche)
+                {
+                    // Le tutoriel s'arrête : la boucle normale reprend à l'image suivante avec la
+                    // gâchette encore enfoncée, qui ne doit pas relancer le tutoriel aussitôt.
+                    _wasPressed[i] = true;
+                    _widgetTutoriel.OnActivate?.Invoke();
+                    VRSons.Jouer(VRSon.Saisie, origine, 0.8f, 1.4f);
+                    return; // le tutoriel vient de s'arrêter : une seule validation par image
+                }
+            }
+        }
+
+        private void AfficherBoutonTutoriel()
+        {
+            if (_libelleTutoriel != null) _libelleTutoriel.text = _tutoriel != null && _tutoriel.EnCours ? "Arrêter le tutoriel" : "Tutoriel des gestes";
+            if (TutorielEnCours)
+            {
+                MasquerTousLesLasers();
+            }
         }
 
         private void RegisterWidget(Transform widgetTransform, Action onActivate, Color normalColor, Color hoverColor)
@@ -269,6 +496,7 @@ namespace RemodelerLeReel.UI
             }
         }
 
+                // [LH-Loco] Bascule a chaud du mode de deplacement VR
         private void ToggleLocomotionMode()
         {
             if (VRModalityManager.IsHandMode)
@@ -291,6 +519,7 @@ namespace RemodelerLeReel.UI
         // RAYONS DE VISÉE VR
         // =====================================================================
 
+                // [LH] Initialisation des lasers de pointage UI world-space
         private void SetupPointers()
         {
             if (!Application.isPlaying) return;
@@ -341,6 +570,23 @@ namespace RemodelerLeReel.UI
             for (int i = 0; i < _widgets.Count; i++)
             {
                 SetWidgetColor(_widgets[i], false);
+            }
+
+            // Pendant le tutoriel, le laser ne vise QUE le bouton « Arrêter le tutoriel » et n'est
+            // dessiné que s'il le touche : les gestes appris ne font pas surgir de laser, et les
+            // autres boutons ne peuvent pas être déclenchés par accident.
+            // Pas de MasquerTousLesLasers ici (il est appelé une fois, au lancement du tutoriel) :
+            // appelé à chaque image, il remettait à zéro _wasPressed, et un doigt posé sur le
+            // bouton du tutoriel le redéclenchait à chaque image (arrêter, relancer, arrêter…).
+            if (TutorielEnCours)
+            {
+                ViserBoutonTutoriel();
+                VerifierContactDirect();
+                if (!AnyControllerPresent() && Camera.main != null && Mouse.current != null)
+                {
+                    HandleMousePointer();
+                }
+                return;
             }
 
             bool controllerHover = false;
@@ -557,6 +803,98 @@ namespace RemodelerLeReel.UI
             }
         }
 
+        /// <summary>Masque et désactive immédiatement tous les lasers et réinitialise les états de visée.</summary>
+        public void MasquerTousLesLasers()
+        {
+            if (_rayLines != null)
+            {
+                for (int i = 0; i < _rayLines.Length; i++)
+                {
+                    HidePointer(i);
+                }
+            }
+            if (_wasPressed != null)
+            {
+                for (int i = 0; i < _wasPressed.Length; i++) _wasPressed[i] = false;
+            }
+            // « Déjà enfoncés » : le pouce (ou la gâchette) qui vient de valider le bouton doit être
+            // relâché avant une nouvelle validation, sinon il arrêterait le tutoriel à l'image suivante.
+            if (_wasShooting != null)
+            {
+                for (int i = 0; i < _wasShooting.Length; i++) _wasShooting[i] = true;
+            }
+            if (_gachetteTutoriel != null)
+            {
+                for (int i = 0; i < _gachetteTutoriel.Length; i++) _gachetteTutoriel[i] = true;
+            }
+            if (_recentHover != null)
+            {
+                for (int i = 0; i < _recentHover.Length; i++) _recentHover[i] = null;
+            }
+            _dwellWidget = null;
+            _dwellTime = 0f;
+            _dwellConsumed = false;
+        }
+
+        /// <summary>
+        /// Permet de valider un bouton en le touchant directement avec la main ou la manette
+        /// (utile notamment pendant le tutoriel où le laser est désactivé).
+        /// </summary>
+        private void VerifierContactDirect()
+        {
+            if (_hands == null || _widgets.Count == 0) return;
+
+            for (int h = 0; h < _hands.Length; h++)
+            {
+                if (_hands[h] == null) continue;
+                XRNode node = _hands[h].handNode;
+                Vector3 handPos = _hands[h].transform.position;
+                HandBones bones = GetHandBones(node);
+                if (bones != null && bones.Visual != null && bones.Visual.activeInHierarchy && bones.IndexTip != null)
+                {
+                    handPos = bones.IndexTip.position;
+                }
+
+                bool nearAnyWidget = false;
+                for (int w = 0; w < _widgets.Count; w++)
+                {
+                    Widget widget = _widgets[w];
+                    if (widget.Collider == null) continue;
+
+                    Vector3 closest = widget.Collider.ClosestPoint(handPos);
+                    float dist = Vector3.Distance(handPos, closest);
+
+                    if (dist < 0.04f)
+                    {
+                        nearAnyWidget = true;
+                        SetWidgetColor(widget, true);
+                        bool isTracked = VRHandGestures.IsTracked(node);
+                        bool pressed = (!isTracked && ReadPress(node)) || dist < 0.015f;
+
+                        if (pressed)
+                        {
+                            if (!_wasPressed[h])
+                            {
+                                _wasPressed[h] = true;
+                                widget.OnActivate?.Invoke();
+                                VRSons.Jouer(VRSon.Saisie, handPos, 0.8f, 1.4f);
+                            }
+                        }
+                        else
+                        {
+                            _wasPressed[h] = false;
+                        }
+                        break;
+                    }
+                }
+
+                if (!nearAnyWidget)
+                {
+                    _wasPressed[h] = false;
+                }
+            }
+        }
+
         private Transform GetHandTransform(XRNode node)
         {
             if (_hands != null)
@@ -757,25 +1095,28 @@ namespace RemodelerLeReel.UI
         // ACTION : JOUER
         // =====================================================================
 
-        private void ActivatePlay()
+        private void ActivatePlay() => ChargerScene(gameSceneName);
+
+        /// <summary>Charge une scène de jeu (bouton « Jeu de base » ou « Jeu de mémoire »).</summary>
+        private void ChargerScene(string sceneName)
         {
             if (_loading) return;
 
-            if (string.IsNullOrWhiteSpace(gameSceneName))
+            if (string.IsNullOrWhiteSpace(sceneName))
             {
                 Debug.LogWarning("[MainMenu] Aucune scène de jeu renseignée.");
                 return;
             }
 
-            if (!Application.CanStreamedLevelBeLoaded(gameSceneName))
+            if (!Application.CanStreamedLevelBeLoaded(sceneName))
             {
-                Debug.LogError("[MainMenu] La scène « " + gameSceneName + " » est introuvable dans les Build Settings.", this);
+                Debug.LogError("[MainMenu] La scène « " + sceneName + " » est introuvable dans les Build Settings.", this);
                 return;
             }
 
             _loading = true;
-            Debug.Log("[MainMenu] Lancement asynchrone de la scène : " + gameSceneName);
-            StartCoroutine(LoadSceneAsyncRoutine(gameSceneName));
+            Debug.Log("[MainMenu] Lancement asynchrone de la scène : " + sceneName);
+            StartCoroutine(LoadSceneAsyncRoutine(sceneName));
         }
 
         private System.Collections.IEnumerator LoadSceneAsyncRoutine(string sceneName)

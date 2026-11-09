@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33b71fae31e6c7d438e8566dc713e666, type: 3}
+  m_Name: rasberry
+  m_EditorClassIdentifier: 
+  m_FormatVersion: 20231020
+  m_SplatCount: 43314
+  m_BoundsMin: {x: -0.037891697, y: -0.03980356, z: -0.13262641}
+  m_BoundsMax: {x: 0.028970698, y: 0.038715765, z: -0.070342615}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: 3a28296903fb073e30aa45985ea5cf18
+  m_PosFormat: 2
+  m_ScaleFormat: 2
+  m_SHFormat: 3
+  m_ColorFormat: 2
+  m_PosData: {fileID: 4900000, guid: e5c3ec54cdf158b49a64a89f43091b4b, type: 3}
+  m_ColorData: {fileID: 4900000, guid: 7462ec1b7926be94c8e4421067f9a85e, type: 3}
+  m_OtherData: {fileID: 4900000, guid: a3987644b1d51664e95ada1f6971c6e5, type: 3}
+  m_SHData: {fileID: 4900000, guid: 835add3e2cde8f5439744085bd40a922, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: 606e64affe090a648913fddf7ce02ada, type: 3}
+  m_Cameras: []

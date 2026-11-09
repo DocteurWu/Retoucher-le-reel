@@ -1,0 +1,20 @@
+{
+  "Le silence est total. Quelqu'un est parti sans éteindre la machine.": "[whispers] Le silence est total... [pause] Quelqu'un est parti... sans éteindre la machine.",
+  "Cette pièce ne te laissera pas partir comme ça. La porte du fond est fermée à clé : remets tout en ordre, la liste au-dessus de la porte te montre ce qu'il reste à faire.": "[ominous] Cette pièce ne te laissera pas partir comme ça. [pause] La porte du fond est fermée à clé : remets tout en ordre... la liste au-dessus de la porte te montre ce qu'il reste à faire.",
+  "Commence par le bac, à ta droite : il lui faut 4 fraises. Pour copier un objet, range-le dans la bulle de ton poignet (paume gauche tournée vers toi), puis touche ton index gauche avec l'index droit.": "Commence par le bac, à ta droite : il lui faut quatre fraises. [pause] Pour copier un objet, range-le dans la bulle de ton poignet... paume gauche tournée vers toi... puis touche ton index gauche avec l'index droit.",
+  "Le bac est plein.": "[satisfied] Le bac est plein.",
+  "Ce petit tableau, au mur, est bien trop petit. Décroche-le, agrandis-le en le pinçant avec tes deux mains (l'autre main doit le toucher), puis accroche-le dans le cadre lumineux.": "[intrigued] Ce petit tableau, au mur... est bien trop petit. [pause] Décroche-le, agrandis-le en le pinçant avec tes deux mains... l'autre main doit le toucher... puis accroche-le dans le cadre lumineux.",
+  "Voilà un tableau à sa juste mesure.": "[satisfied] Voilà... un tableau à sa juste mesure.",
+  "La plante étouffe sur son étagère. Rends-la au moins deux fois plus grande, puis pose-la sur le pot.": "[concerned] La plante étouffe, sur son étagère. [pause] Rends-la au moins deux fois plus grande... puis pose-la sur le pot.",
+  "La plante a trouvé sa place.": "[softly] La plante a trouvé sa place.",
+  "Cette statue n'a rien à faire ici. Range-la dans la bulle de ton poignet, puis touche ton majeur gauche avec l'index droit pour la faire disparaître.": "[suspicious] Cette statue... n'a rien à faire ici. [pause] Range-la dans la bulle de ton poignet, puis touche ton majeur gauche avec l'index droit... pour la faire disparaître.",
+  "Plus de statue.": "[dryly] Plus de statue.",
+  "Il ne manque plus que la clé de la porte... Les tableaux cachent parfois des choses.": "Il ne manque plus que la clé de la porte... [pause] [whispers] Les tableaux cachent parfois des choses.",
+  "Une clé, cachée derrière le tableau !": "[surprised] Une clé ! [pause] Cachée derrière le tableau !",
+  "Clic. La serrure a cédé : ouvre la porte en grand pour passer à la suite.": "[whispers] Clic. [pause] La serrure a cédé... ouvre la porte en grand pour passer à la suite.",
+  "Une autre pièce. Ici aussi, le réel attend d'être retouché.": "[whispers] Une autre pièce. [pause] Ici aussi... le réel attend d'être retouché.",
+  "Bienvenue à la bibliothèque. Ici, pas besoin de force : c'est ta mémoire qui compte.": "[warmly] Bienvenue à la bibliothèque. [pause] Ici, pas besoin de force... [mysterious] c'est ta mémoire qui compte.",
+  "Regarde bien la pièce et retiens où se trouve chaque objet. Dans quelques secondes, tout va bouger !": "[whispers] Regarde bien la pièce... et retiens où se trouve chaque objet. [pause] [excited] Dans quelques secondes, tout va bouger !",
+  "Bravo, tout est revenu à sa place ! Quelle mémoire !": "[impressed] Bravo, tout est revenu à sa place ! [pause] [laughs softly] Quelle mémoire !",
+  "Tout s'est mélangé ! Reprends chaque objet au milieu de la pièce et remets-le exactement à sa place.": "[surprised] Tout s'est mélangé ! [pause] Reprends chaque objet au milieu de la pièce... et remets-le exactement à sa place."
+}

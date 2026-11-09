@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRGrabLocomotion.cs — DÉPLACEMENT « ESCALADE » : SE TIRER EN SAISISSANT LE VIDE
 //
@@ -35,6 +36,42 @@ namespace RemodelerLeReel.VR
     [AddComponentMenu("Remodeler le Reel/VR/VR Grab Locomotion (Escalade)")]
     public class VRGrabLocomotion : MonoBehaviour
     {
+        private static VRGrabLocomotion s_instance;
+        private static float s_lastClimbTime = -10f;
+
+        /// <summary>
+        /// Remise à zéro à chaque lancement : le projet désactive le rechargement du domaine en
+        /// mode Play, les statiques survivent d'une partie à l'autre. L'heure de la dernière
+        /// escalade (horloge de la partie précédente) laissait IsClimbingActive vrai pendant
+        /// autant de secondes au début de la partie suivante, et coupait le redimensionnement.
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void RemettreAZero()
+        {
+            s_lastClimbTime = -10f;
+            s_instance = null;
+        }
+
+        /// <summary>Vrai tant que le joueur grimpe activement (ou vient de le faire il y a moins de 0.25s).</summary>
+        public static bool IsClimbingActive => Time.unscaledTime - s_lastClimbTime < 0.25f;
+
+        /// <summary>Vrai si la main spécifiée est actuellement en train de tracter le monde en escalade.</summary>
+        public static bool IsHandClimbing(XRNode node)
+        {
+            if (s_instance == null) return false;
+            int idx = node == XRNode.LeftHand ? 0 : 1;
+            return s_instance._active[idx];
+        }
+
+        private void OnEnable()
+        {
+            s_instance = this;
+        }
+
+        private void OnDisable()
+        {
+            if (s_instance == this) s_instance = null;
+        }
         [Tooltip("Exiger les DEUX mains fermées pour se déplacer (sinon une seule suffit)")]
         public bool requireBothHands = false;
 
@@ -79,7 +116,8 @@ namespace RemodelerLeReel.VR
                 // Mains : escalade OU téléportation, selon le réglage du menu.
                 && (!VRModalityManager.IsHandMode || VRLocomotionSettings.HandMode == HandLocomotionMode.Climb)
                 && !VRScaleGrab.IsScalingActive
-                && !VRTeleportation.IsAiming; // poing du microgeste de visée ≠ escalade
+                && !VRTeleportation.IsAiming // poing du microgeste de visée ≠ escalade
+                && !VRPorte.UneMainTientUnePorte; // une porte qu'on tire ne doit pas tirer le joueur
 
             Vector3 sum = Vector3.zero;
             int count = 0;
@@ -87,7 +125,9 @@ namespace RemodelerLeReel.VR
             {
                 XRNode node = i == 0 ? XRNode.LeftHand : XRNode.RightHand;
                 var hand = VRGrabHand.GetHandForNode(node);
-                bool climbing = allowed && hand != null && hand.IsGrabInputActive && !hand.IsHoldingObject;
+                // SaisieEnAttente : main qui se ferme sur un objet, ce n'est pas (encore) de l'escalade.
+                bool handNearDoor = hand != null && VRPorte.UneMainEstProcheDUnePorte(hand.transform.position);
+                bool climbing = allowed && hand != null && hand.IsGrabInputActive && !hand.IsHoldingObject && !hand.SaisieEnAttente && !handNearDoor;
 
                 if (!climbing)
                 {
@@ -106,13 +146,14 @@ namespace RemodelerLeReel.VR
             }
 
             if (count == 0) return;
+            s_lastClimbTime = Time.unscaledTime;
             if (requireBothHands && !(_active[0] && _active[1])) return;
 
             Vector3 worldDelta = space.TransformVector(sum / count) * moveMultiplier;
             if (!allowVertical) worldDelta.y = 0f;
 
             worldDelta = Vector3.ClampMagnitude(worldDelta, maxSpeed * Time.deltaTime);
-            worldDelta = LimitByWorld(worldDelta);
+            worldDelta = LimitByWorld(worldDelta, rig);
             if (worldDelta.sqrMagnitude < 1e-10f) return;
 
             VRUtils.MoveRig(rig, rig.position + worldDelta);
@@ -123,7 +164,13 @@ namespace RemodelerLeReel.VR
         /// Seul le décor STATIQUE (collider sans Rigidbody) compte : les objets
         /// saisissables et les objets tenus ne bloquent pas le joueur.
         /// </summary>
-        private Vector3 LimitByWorld(Vector3 delta)
+        /// <summary>
+        /// Collider qui fait partie du rig (mains, manettes, objet tenu) : ni mur ni sol pour la
+        /// tête. Sans ce filtre, un collider du rig bloquait l'escalade ou passait pour du sol.
+        /// </summary>
+        private static bool DuRig(Collider c, Transform rig) => rig != null && c.transform.IsChildOf(rig);
+
+        private Vector3 LimitByWorld(Vector3 delta, Transform rig)
         {
             Camera cam = Camera.main;
             if (cam == null) return delta;
@@ -138,7 +185,7 @@ namespace RemodelerLeReel.VR
             float allowed = dist;
             for (int i = 0; i < n; i++)
             {
-                if (_hits[i].collider == null || _hits[i].collider.attachedRigidbody != null) continue;
+                if (_hits[i].collider == null || _hits[i].collider.attachedRigidbody != null || DuRig(_hits[i].collider, rig)) continue;
                 // distance 0 = déjà au contact au départ : on laisse s'éloigner, pas s'enfoncer.
                 if (_hits[i].distance <= 0f)
                 {
@@ -154,7 +201,7 @@ namespace RemodelerLeReel.VR
             n = Physics.RaycastNonAlloc(probe, Vector3.down, _hits, groundProbeDistance, ~0, QueryTriggerInteraction.Ignore);
             for (int i = 0; i < n; i++)
             {
-                if (_hits[i].collider != null && _hits[i].collider.attachedRigidbody == null) return delta;
+                if (_hits[i].collider != null && _hits[i].collider.attachedRigidbody == null && !DuRig(_hits[i].collider, rig)) return delta;
             }
             return Vector3.zero;
         }

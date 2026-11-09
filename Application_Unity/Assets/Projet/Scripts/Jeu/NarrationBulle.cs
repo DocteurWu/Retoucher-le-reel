@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  NarrationBulle.cs — LA BULLE DE NARRATION (affichage partagé)
 //
@@ -225,45 +226,146 @@ namespace RemodelerLeReel.Jeu
             _texte.ForceMeshUpdate();
             int total = _texte.textInfo.characterCount;
 
-            bool avecVoix = replique.voix != null;
-            float pas = vitesseEcriture;
-            if (avecVoix)
-            {
-                PreparerVoix();
-                _voix.clip = replique.voix;
-                _voix.volume = volumeVoix;
-                _voix.Play();
-                // Écriture calée sur la voix : la dernière lettre tombe avec la dernière syllabe.
-                if (total > 0) pas = Mathf.Clamp(replique.voix.length / total, 0.005f, 0.5f);
-            }
-
+            AudioClip voix = !VoixActive ? null : (replique.voix != null ? replique.voix : VoixGeneree(contenu));
+            bool avecVoix = voix != null;
             // maxVisibleCharacters (plutôt que d'ajouter les lettres une à une) : la mise
             // en page est calculée une fois, les mots ne sautent pas de ligne en cours d'écriture.
             _passer = false;
-            for (int n = 1; n <= total && !_passer; n++)
+            if (avecVoix)
+            {
+                PreparerVoix();
+                _voix.clip = voix;
+                _voix.volume = volumeVoix;
+                _voix.mute = false;
+                _voix.Play();
+                yield return EcrireAuRythmeDeLaVoix(voix, total);
+            }
+            for (int n = 1; n <= total && !_passer && !avecVoix; n++)
             {
                 _texte.maxVisibleCharacters = n;
+                if (avecVoix) _voix.mute = !VoixActive; // coupée en pleine phrase : la phrase continue, muette
                 char c = _texte.textInfo.characterInfo[n - 1].character;
-                if (sonLettres && !avecVoix && !char.IsWhiteSpace(c) && n % Mathf.Max(1, lettresParTic) == 0)
+                if (sonLettres && (!avecVoix || !VoixActive) && !char.IsWhiteSpace(c) && n % Mathf.Max(1, lettresParTic) == 0)
                 {
                     VRSons.Jouer(VRSon.NarrationLettre, null, 1f, VRSons.PitchAleatoire(0.1f));
                 }
-                yield return new WaitForSeconds(pas);
+                yield return AttenteLettre(); // en cache : avant, un objet neuf par lettre (≈ 30 par seconde)
             }
             _texte.maxVisibleCharacters = int.MaxValue;
             _passer = false;
 
             // --- Temps de lecture (compté une fois le texte écrit) ---
-            float lecture = replique.duree > 0f
-                ? replique.duree
-                : Mathf.Max(lectureMin, contenu.Length * lectureParCaractere);
+            // Avec une voix, le joueur vient d'entendre la phrase : une courte respiration suffit.
+            float lecture = avecVoix
+                ? PauseApresVoix
+                : (replique.duree > 0f ? replique.duree : Mathf.Max(lectureMin, contenu.Length * lectureParCaractere));
             float fin = Time.time + lecture;
             while (!_passer && (Time.time < fin || (avecVoix && _voix.isPlaying)))
             {
+                if (avecVoix) _voix.mute = !VoixActive;
                 yield return null;
             }
             _passer = false;
             if (avecVoix) _voix.Stop();
+        }
+
+        /// <summary>
+        /// Écrit le texte au rythme de la voix : à chaque image, la part du texte affichée = la part
+        /// de la voix déjà lue (horloge de l'AudioSource). La dernière lettre tombe avec la dernière
+        /// syllabe. (Une attente par lettre était arrondie à l'image : le texte prenait du retard.)
+        /// </summary>
+        private IEnumerator EcrireAuRythmeDeLaVoix(AudioClip voix, int total)
+        {
+            float debut = Time.time;
+            float duree = Mathf.Max(0.05f, voix.length);
+            int affiches = 0;
+            while (affiches < total && !_passer)
+            {
+                _voix.mute = !VoixActive; // coupée en pleine phrase : la phrase continue, muette
+                float avance = _voix.isPlaying ? _voix.time / duree : (Time.time - debut) / duree;
+                int cible = Mathf.Clamp(Mathf.CeilToInt(Mathf.Clamp01(avance) * total), affiches, total);
+
+                // Voix coupée depuis le PC : les bruits de touche reprennent.
+                for (int n = affiches + 1; n <= cible; n++)
+                {
+                    char c = _texte.textInfo.characterInfo[n - 1].character;
+                    if (sonLettres && !VoixActive && !char.IsWhiteSpace(c) && n % Mathf.Max(1, lettresParTic) == 0)
+                    {
+                        VRSons.Jouer(VRSon.NarrationLettre, null, 1f, VRSons.PitchAleatoire(0.1f));
+                    }
+                }
+                affiches = cible;
+                _texte.maxVisibleCharacters = affiches;
+                yield return null;
+            }
+        }
+
+        // Clé « v2 » (2026-11-09) : la voix est maintenant ACTIVÉE par défaut dans toutes les scènes.
+        // Nouvelle clé pour que ce défaut s'applique aussi aux PC où l'ancienne (« …_VoixNarration »,
+        // défaut coupé) avait été enregistrée à 0.
+        private const string CleVoixActive = "RemodelerLeReel_VoixNarration_v2";
+
+        private static int s_voixActive = -1; // -1 = pas encore lu (PlayerPrefs lu une fois, pas à chaque lettre)
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void RemettreAZero() => s_voixActive = -1; // rechargement du domaine désactivé en Play
+
+        /// <summary>
+        /// Voix de la narration activée (défaut : oui ; retenu d'une partie à l'autre). Coupée :
+        /// bruits de touche à la place. Réglée depuis le PC : panneau de démo, touche V.
+        /// </summary>
+        public static bool VoixActive
+        {
+            get
+            {
+                if (s_voixActive < 0) s_voixActive = PlayerPrefs.GetInt(CleVoixActive, 1) != 0 ? 1 : 0;
+                return s_voixActive == 1;
+            }
+            set
+            {
+                s_voixActive = value ? 1 : 0;
+                PlayerPrefs.SetInt(CleVoixActive, s_voixActive);
+                PlayerPrefs.Save();
+            }
+        }
+
+        /// <summary>Respiration (s) entre la fin d'une phrase dite et la suivante.</summary>
+        private const float PauseApresVoix = 0.6f;
+
+        private WaitForSeconds _attenteLettre;
+        private float _attenteLettreDuree = -1f;
+
+        /// <summary>Attente entre deux lettres, recréée seulement si vitesseEcriture change.</summary>
+        private WaitForSeconds AttenteLettre()
+        {
+            if (_attenteLettre == null || _attenteLettreDuree != vitesseEcriture)
+            {
+                _attenteLettreDuree = vitesseEcriture;
+                _attenteLettre = new WaitForSeconds(vitesseEcriture);
+            }
+            return _attenteLettre;
+        }
+
+        /// <summary>
+        /// Voix générée pour ce texte (Outils/VoixNarration), null s'il n'y en a pas : la phrase
+        /// s'affiche alors sans voix. Par le texte et non par référence, car les consignes
+        /// sont des répliques créées pendant le jeu.
+        /// </summary>
+        private static AudioClip VoixGeneree(string texte)
+        {
+            return string.IsNullOrWhiteSpace(texte) ? null : Resources.Load<AudioClip>("Narration/" + CleVoix(texte));
+        }
+
+        /// <summary>Nom du fichier de voix d'un texte : MD5 de l'UTF-8 sans espaces autour (même calcul que generer.mjs).</summary>
+        public static string CleVoix(string texte)
+        {
+            using (System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create())
+            {
+                byte[] empreinte = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(texte.Trim()));
+                System.Text.StringBuilder hexa = new System.Text.StringBuilder(32);
+                foreach (byte b in empreinte) hexa.Append(b.ToString("x2"));
+                return hexa.ToString();
+            }
         }
 
         private IEnumerator Fondu(float de, float vers)

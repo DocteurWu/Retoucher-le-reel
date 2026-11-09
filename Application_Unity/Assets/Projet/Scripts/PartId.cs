@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 using UnityEngine;
 
 public enum MachinePartType

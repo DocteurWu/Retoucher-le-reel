@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33b71fae31e6c7d438e8566dc713e666, type: 3}
+  m_Name: canapevert2
+  m_EditorClassIdentifier: 
+  m_FormatVersion: 20231020
+  m_SplatCount: 195877
+  m_BoundsMin: {x: 12.169576, y: -4.365428, z: -6.480574}
+  m_BoundsMax: {x: 17.895302, y: -1.3318452, z: -2.4328306}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: 7ce75d82674dec4a8a34a80941554f39
+  m_PosFormat: 2
+  m_ScaleFormat: 2
+  m_SHFormat: 3
+  m_ColorFormat: 2
+  m_PosData: {fileID: 4900000, guid: 759e74f270f72a94fa5198a61728a93a, type: 3}
+  m_ColorData: {fileID: 4900000, guid: c51c4cd2b52c2b84ab34d307f7f88177, type: 3}
+  m_OtherData: {fileID: 4900000, guid: bea3dcb1ebfb11348abadfac56755476, type: 3}
+  m_SHData: {fileID: 4900000, guid: 3935cd87423df7746ab5df40f5aef9c4, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: f8d0c70133802f14d919a0aa88473899, type: 3}
+  m_Cameras: []

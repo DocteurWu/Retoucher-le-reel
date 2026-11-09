@@ -120,6 +120,7 @@ Traitement_Gaussian_SAGA/Donnees_Brutes/**/*.tar.gz
 # Nuages de points / captations gaussiennes (les exports ponctuels restent
 # ajoutables via " git add -f ")
 *.ply
+*.ply.meta
 Application_Unity/Assets/Projet/Art_Graphismes/GaussianSplats/Captures/
 # ⚠️ NE PAS ignorer Application_Unity/Assets/Projet/Scenes_Niveaux/Gaussian/ :
 # ce dossier contient les DONNEES des splats (asset + .bytes) utilisees par
@@ -132,3 +133,7 @@ Application_Unity/Assets/Projet/Art_Graphismes/GaussianSplats/Captures/
 Application_Unity/.vscode/
 Application_Unity/Assets/Plugins/
 Application_Unity/Assets/Plugins.meta
+
+# Journaux de telemetrie de test
+Journaux_PCVR/*.csv
+Application_Unity/Journaux_PCVR/*.csv

@@ -1,0 +1,173 @@
+{
+  "voix": {
+    "narration": "AYfOkr1hDQYbhigmRZ16",
+    "tutoriel": "dYjOkSQBPiH2igolJfeH"
+  },
+  "modele": "eleven_v4",
+  "repliques": {
+    "ad9d6fb15dd443e137d897a82fc03acb": {
+      "texte": "Le silence est total. Quelqu'un est parti sans éteindre la machine.",
+      "source": "narration"
+    },
+    "e62c4103b85e9562eac17f1180e6c1ce": {
+      "texte": "Il ne manque plus que la clé de la porte... Les tableaux cachent parfois des choses.",
+      "source": "narration"
+    },
+    "ca274ecb1e0401bc0c6287034cc0453d": {
+      "texte": "Une clé, cachée derrière le tableau !",
+      "source": "narration"
+    },
+    "465406378c780e6ea4dc0b722415944c": {
+      "texte": "Ce petit tableau, au mur, est bien trop petit. Décroche-le, agrandis-le en le pinçant avec tes deux mains (l'autre main doit le toucher), puis accroche-le dans le cadre lumineux.",
+      "source": "narration"
+    },
+    "81bcbc6e16b6faee917fe5bed0bbdd1f": {
+      "texte": "Voilà un tableau à sa juste mesure.",
+      "source": "narration"
+    },
+    "7796fdffa5f9a8a6de2cefbbf3a11213": {
+      "texte": "Cette statue n'a rien à faire ici. Range-la dans la bulle de ton poignet, puis touche ton majeur gauche avec l'index droit pour la faire disparaître.",
+      "source": "narration"
+    },
+    "6a472c2442a02ed9b2687550ce6ca672": {
+      "texte": "Plus de statue.",
+      "source": "narration"
+    },
+    "f869d0f9af6bf8f3fc34c791daacc08f": {
+      "texte": "La plante étouffe sur son étagère. Rends-la au moins deux fois plus grande, puis pose-la sur le pot.",
+      "source": "narration"
+    },
+    "416479701f39004f1babb390b037d8fe": {
+      "texte": "La plante a trouvé sa place.",
+      "source": "narration"
+    },
+    "f85119813aec9bcbf6c903d83a7cb153": {
+      "texte": "Cette pièce ne te laissera pas partir comme ça. La porte du fond est fermée à clé : remets tout en ordre, la liste au-dessus de la porte te montre ce qu'il reste à faire.",
+      "source": "narration"
+    },
+    "3362058933959ec68e6449877d58e3d5": {
+      "texte": "Clic. La serrure a cédé : ouvre la porte en grand pour passer à la suite.",
+      "source": "narration"
+    },
+    "a7150ad3a157fd918ad3a8ec86f78f3e": {
+      "texte": "Commence par le bac, à ta droite : il lui faut 4 fraises. Pour copier un objet, range-le dans la bulle de ton poignet (paume gauche tournée vers toi), puis touche ton index gauche avec l'index droit.",
+      "source": "narration"
+    },
+    "f5e286f7823e21fb5e15f193d9dd350f": {
+      "texte": "Le bac est plein.",
+      "source": "narration"
+    },
+    "265d41ad68f1b67614fb77121e2591f0": {
+      "texte": "Une autre pièce. Ici aussi, le réel attend d'être retouché.",
+      "source": "narration"
+    },
+    "55f28c48e6ef1eca844e4b278de6f075": {
+      "texte": "Bienvenue à la bibliothèque. Ici, pas besoin de force : c'est ta mémoire qui compte.",
+      "source": "narration"
+    },
+    "4e4eb87040a23af802833e84000e4eac": {
+      "texte": "Regarde bien la pièce et retiens où se trouve chaque objet. Dans quelques secondes, tout va bouger !",
+      "source": "narration"
+    },
+    "8b98cbeaa545edbc86ab873227949dde": {
+      "texte": "Bravo, tout est revenu à sa place ! Quelle mémoire !",
+      "source": "narration"
+    },
+    "315395c065970a43126614ea35e19e13": {
+      "texte": "Tout s'est mélangé ! Reprends chaque objet au milieu de la pièce et remets-le exactement à sa place.",
+      "source": "narration"
+    },
+    "719552850cb58ea09d18dff395a2d5cf": {
+      "texte": "Pour te déplacer dans la pièce, utilise le stick.",
+      "source": "tutoriel"
+    },
+    "efa8308c3dfac2c6e6704df0abc04450": {
+      "texte": "Bien.",
+      "source": "tutoriel"
+    },
+    "a196f3a18a91a466b90e2b97ef66a2b5": {
+      "texte": "Approche ta main du cube : un petit tic te dit qu'il est à portée. Ferme alors le poing ou pince-le.",
+      "source": "tutoriel"
+    },
+    "0927ff8cc5c3f799ac5ad96208072df2": {
+      "texte": "Approche ta manette du cube et appuie sur la gâchette ou le grip.",
+      "source": "tutoriel"
+    },
+    "c90250d6b20accf4f6cc98cf20a9cc0e": {
+      "texte": "Tiens le cube d'une main, touche-le et pince-le avec l'autre, puis écarte tes mains.",
+      "source": "tutoriel"
+    },
+    "3a2884c35f10d89ad676e3da46935bc5": {
+      "texte": "Tiens le cube et pousse le stick droit vers le haut ou vers le bas.",
+      "source": "tutoriel"
+    },
+    "fa319ee431b113597e4d400ada272a1a": {
+      "texte": "Parfait.",
+      "source": "tutoriel"
+    },
+    "8090f8ee92a8cfae2bf571f26da6c595": {
+      "texte": "Tourne ta paume gauche vers ton visage et attends la bulle de ton poignet. Lâche le cube dedans.",
+      "source": "tutoriel"
+    },
+    "6c9699c8a51ea9ce04ec9c1460400f0e": {
+      "texte": "Rangé.",
+      "source": "tutoriel"
+    },
+    "a5834ef5b7f6b55ecc8c8d13cb35a18f": {
+      "texte": "Le cube est dans la bulle : touche ton index gauche avec ton index droit pour le copier.",
+      "source": "tutoriel"
+    },
+    "520d26942a81a9b6da8e3bb52e6ebf3f": {
+      "texte": "Tiens le cube et appuie sur X pour le copier.",
+      "source": "tutoriel"
+    },
+    "17eb7229e2f4d91863204dadd93f69af": {
+      "texte": "Le voilà en double.",
+      "source": "tutoriel"
+    },
+    "7eec09fc02f708436cc7efc92538890d": {
+      "texte": "Touche ton annulaire gauche avec ton index droit : le cube revient dans ta main droite.",
+      "source": "tutoriel"
+    },
+    "357a62a531cf395e2f2d341eaaf08d13": {
+      "texte": "De retour.",
+      "source": "tutoriel"
+    },
+    "781e397f0026f1bb5ad178594165daef": {
+      "texte": "Range un cube dans la bulle, puis touche ton majeur gauche avec ton index droit pour le supprimer.",
+      "source": "tutoriel"
+    },
+    "26ff0f1afdf660040510de4ed9a4be64": {
+      "texte": "Tiens un cube et appuie sur Y pour le supprimer.",
+      "source": "tutoriel"
+    },
+    "c5a0f32bed23501513c9d1ace3c83aa8": {
+      "texte": "Disparu.",
+      "source": "tutoriel"
+    },
+    "d01dcf639107ba4e1fc58fdbdbfe3609": {
+      "texte": "Pour te déplacer : ferme le poing, main vide, et tire vers toi comme sur une corde.",
+      "source": "tutoriel"
+    },
+    "bb8ef8abc07b813d9352c78ac4d0cc66": {
+      "texte": "Pour te déplacer : fais le signe du pistolet avec ta main gauche, vise le sol et attends sans bouger.",
+      "source": "tutoriel"
+    },
+    "753a25234d6310b422c7276d3702b109": {
+      "texte": "Pour te déplacer : poing lâche, main droite, tape ton pouce sur le côté de ton index pour viser le sol, puis tape encore pour y aller.",
+      "source": "tutoriel"
+    },
+    "d5bea0f94e9e12aa4c94a913945306f4": {
+      "texte": "Avant tout, apprends tes gestes : imite les mains fantômes devant toi.",
+      "source": "tutoriel"
+    },
+    "65c7cc298f34feef01a3be64838c0d0f": {
+      "texte": "Pour la suite, un nouveau geste : imite les mains fantômes.",
+      "source": "tutoriel"
+    },
+    "405e47ca759d435aba29e086eb74ef25": {
+      "texte": "Tu sais tout faire. Vise « Jeu de base » ou « Jeu de mémoire », et tire pour commencer.",
+      "source": "tutoriel"
+    }
+  }
+}

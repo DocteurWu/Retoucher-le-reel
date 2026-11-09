@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33b71fae31e6c7d438e8566dc713e666, type: 3}
+  m_Name: chaise2M
+  m_EditorClassIdentifier: 
+  m_FormatVersion: 20231020
+  m_SplatCount: 12453
+  m_BoundsMin: {x: 7.1194377, y: -4.2999315, z: 2.3961885}
+  m_BoundsMax: {x: 8.901207, y: -1.376102, z: 4.1172004}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: 24bfc7852590c69d211ac618b765a3b7
+  m_PosFormat: 2
+  m_ScaleFormat: 2
+  m_SHFormat: 3
+  m_ColorFormat: 2
+  m_PosData: {fileID: 4900000, guid: 4ac1b4e21241254439d5cf61e7b340ff, type: 3}
+  m_ColorData: {fileID: 4900000, guid: 25ec38b35c3d1874eb079c8bdbed7d95, type: 3}
+  m_OtherData: {fileID: 4900000, guid: 98b7684c775c13f4288e0c3e2482583f, type: 3}
+  m_SHData: {fileID: 4900000, guid: 1035ebdea82de544f96aeff06a6d655f, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: 8bb170cc2bdee70428f7b40ce2d2b909, type: 3}
+  m_Cameras: []

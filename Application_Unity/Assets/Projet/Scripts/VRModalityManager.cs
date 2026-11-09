@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRModalityManager.cs — GESTION DES MODALITÉS : MAINS (HAND TRACKING) VS MANETTES
 //
@@ -102,6 +103,7 @@ namespace RemodelerLeReel.VR
             }
         }
 
+                // [LH-Core] Detection et initialisation du gestionnaire de modalites mains/manettes
         private void Awake()
         {
             if (Instance != null && Instance != this)

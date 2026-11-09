@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33b71fae31e6c7d438e8566dc713e666, type: 3}
+  m_Name: tabouret
+  m_EditorClassIdentifier: 
+  m_FormatVersion: 20231020
+  m_SplatCount: 15207
+  m_BoundsMin: {x: 10.478041, y: -3.2863953, z: -5.294335}
+  m_BoundsMax: {x: 12.23287, y: -1.2958766, z: -3.685223}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: 7c959544dd3114baae435aa555f01483
+  m_PosFormat: 2
+  m_ScaleFormat: 2
+  m_SHFormat: 3
+  m_ColorFormat: 2
+  m_PosData: {fileID: 4900000, guid: a972a7ea5451a9a44890de8089a713df, type: 3}
+  m_ColorData: {fileID: 4900000, guid: f8b002442b985b74fba827976faee621, type: 3}
+  m_OtherData: {fileID: 4900000, guid: 407dbc3d719df824dbd2c2463720ad4a, type: 3}
+  m_SHData: {fileID: 4900000, guid: 03abab8509c79ad42ae0968258c22dd8, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: 393dfc14c78e6b24c828faf97e6f33d4, type: 3}
+  m_Cameras: []

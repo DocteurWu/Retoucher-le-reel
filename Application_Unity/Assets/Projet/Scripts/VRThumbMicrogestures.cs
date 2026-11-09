@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRThumbMicrogestures.cs — MICROGESTES DU POUCE (façon Meta), point d'accès unique
 //
@@ -54,6 +55,14 @@ namespace RemodelerLeReel.VR
         }
 
         private static readonly HandState[] _states = new HandState[2];
+
+        /// <summary>Chaque partie repart d'un pouce relâché (statiques gardées entre deux parties : rechargement du domaine désactivé).</summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void RemettreAZero()
+        {
+            _states[0] = default;
+            _states[1] = default;
+        }
 
         /// <summary>Le poing du microgeste est-il formé (main suivie, poing lâche) ?</summary>
         public static bool IsPoseActive(XRNode node) => Get(node).Pose;

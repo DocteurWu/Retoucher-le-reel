@@ -1,3 +1,4 @@
+﻿# Authored by Louai HAMLAT - All rights reserved
 """
 Extraction d'images rectilinéaires depuis une vidéo 360 équirectangulaire stabilisée (Insta360 Studio).
 Découpe optimisée pour COLMAP et Gaussian Splatting (Splatfacto).
@@ -13,6 +14,7 @@ FFMPEG_PATH = r"C:\ffmpeg\bin\ffmpeg.exe"
 if not os.path.exists(FFMPEG_PATH):
     FFMPEG_PATH = "ffmpeg"
 
+# [LH] Découpage cubemap / rectilinear optimisé pour reconstruction SAGA (Louai H.)
 def extract_views(video_path, output_dir, intervals, fps=0.5, resolution=1600, fov=100, clean_output=True):
     """
     Extrait les vues rectilinéaires pour chaque intervalle spécifié.

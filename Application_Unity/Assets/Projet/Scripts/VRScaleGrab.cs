@@ -1,3 +1,4 @@
+﻿// Authored by Louai HAMLAT - All rights reserved
 // =====================================================================================
 //  VRScaleGrab.cs — ÉCHELLE DE L'OBJET TENU
 //
@@ -23,7 +24,6 @@
 //
 //  RÉFÉRENCES : voir README.md (sections 3, 4 et 5)
 // =====================================================================================
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -62,7 +62,7 @@ namespace RemodelerLeReel.VR
     ///   1. ResolveOtherHand      retrouve la main qui porte ce composant vs l'autre main.
     ///   2. TryGetHeldObject      demande aux deux mains quel Rigidbody elles tiennent.
     ///   3. ApplyWorldScale       ne modifie l'échelle que si la valeur a vraiment changé.
-    ///   4. UpdateScaleAudio      donne le retour sonore (intro puis boucle).
+    ///   4. UpdateScaleAudio      donne le retour sonore (note douce : hauteur = taille, volume = vitesse).
     ///
     /// Le suivi 6-DOF des manettes est assuré par VRGrabHand sur le même GameObject ;
     /// ce composant ne fait que lire la position de son propre Transform.
@@ -99,13 +99,13 @@ namespace RemodelerLeReel.VR
         [Tooltip("Lissage du geste d'écartement (0 = brut, 20 = très fluide)")]
         [Range(0f, 20f)] public float pinchSmoothing = 12f;
         [Tooltip("Sensibilité du geste à deux mains (1 = direct, 0.6 = doux et progressif)")]
-        [Range(0.1f, 2f)] public float pinchSensitivity = 0.6f;
+        [Range(0.1f, 2f)] public float pinchSensitivity = 0.75f;
         [Tooltip("Appui minimum de la seconde main pour déclencher le pincement")]
         [Range(0f, 1f)] public float pinchPressThreshold = 0.5f;
         [Tooltip("Écartement minimal entre les manettes (m) pour éviter une division par zéro")]
         public float minPinchDistance = 0.03f;
         [Tooltip("Distance max (m) entre la main libre et la surface de l'objet pour autoriser le scale à deux mains")]
-        public float pinchTouchDistance = 0.06f;
+        public float pinchTouchDistance = 0.15f;
 
         [Header("--- Limites par défaut (sans composant VRScalable) ---")]
         [Tooltip("Taille minimale en % de la taille INITIALE de l'objet")]
@@ -130,27 +130,16 @@ namespace RemodelerLeReel.VR
         public bool vibrateHoldingHandToo = true;
 
         [Header("--- Son ---")]
-        // Le clip d'origine ("ScaleGrab (one piece).mp3", 12 s) a été découpé en deux
-        // segments avec ffmpeg, tous deux au format OGG (pas de padding d'encodeur, donc
-        // un point de boucle propre) :
-        //   - "ScaleGrab intro.ogg" = 0 -> 4 s  : le bruit d'ouverture, entendu UNE fois.
-        //   - "ScaleGrab loop.ogg"  = 4 s -> fin : la partie répétée pendant le scale.
-        // L'Unity AudioSource ne sait boucler que de 0 à la fin du clip, on utilise donc
-        // deux AudioSource : l'intro se joue une fois, puis la boucle prend le relais.
-        [Tooltip("Source d'intro réutilisée si elle est renseignée, sinon créée au runtime")]
-        public AudioSource scaleAudio;
-        [Tooltip("Segment joué une seule fois au début du scale (ici 0 -> 4 s)")]
-        public AudioClip introClip;
-        [Tooltip("Segment bouclé tant que le scale dure (ici 4 s -> fin)")]
-        public AudioClip loopClip;
-        [Tooltip("Utiliser la durée de introClip comme délai avant la boucle")]
-        public bool autoLoopDelay = true;
-        [Tooltip("Délai avant de démarrer la boucle (sans introClip ou si autoLoopDelay est décoché)")]
-        public float loopDelay = 4f;
-        [Range(0f, 1f)] [Tooltip("Volume du retour sonore")]
-        public float scaleVolume = 1f;
-        [Tooltip("Fondu à l'arrêt du scale (0 = arrêt sec)")]
-        public float fadeOutDuration = 0.15f;
+        // Une note douce, générée par le code, qui suit le geste :
+        //   - sa HAUTEUR suit la taille de l'objet : petit = aigu, grand = grave ;
+        //   - son VOLUME suit la vitesse du redimensionnement : silence quand la taille
+        //     ne bouge plus (même si les mains restent en position).
+        [Range(0f, 1f)] [Tooltip("Volume maximal de la note (geste rapide). Volontairement bas.")]
+        public float volumeSon = 0.12f;
+        [Range(0.1f, 1.5f)] [Tooltip("Ampleur de la variation de hauteur : à 0,5, un objet ×4 sonne une octave plus grave, et ×0,25 une octave plus aigu.")]
+        public float exposantHauteur = 0.5f;
+        [Tooltip("Note à utiliser à la place de la note générée (doit boucler proprement). Vide = note générée.")]
+        public AudioClip clipNote;
         [Range(0f, 1f)] [Tooltip("1 = source 3D (spatialisée sur la manette), 0 = son non spatialisé")]
         public float spatialBlend = 1f;
         [Tooltip("Distance à laquelle le son est à volume maximum (mode 3D)")]
@@ -164,7 +153,7 @@ namespace RemodelerLeReel.VR
 
         /// <summary>
         /// Durée sans changement d'échelle après laquelle on considère que le geste est
-        /// terminé. Ce petit tampon évite que le son se coupe quand le facteur d'échelle
+        /// terminé. Ce petit tampon évite que la vibration se coupe quand le facteur d'échelle
         /// arrive en butée (limite min/max atteinte : la valeur ne change plus).
         /// </summary>
         private const float ScaleActiveWindow = 0.1f;
@@ -199,44 +188,73 @@ namespace RemodelerLeReel.VR
         private float _pinchStartDistance = 1f; // écartement des manettes au départ du geste
         private Vector3 _pinchStartScale = Vector3.one;
         private float _pinchFactor = 1f;
+        private bool _stickScalingActive;
+        private float _freeHandGrabHoldTime;
+        private const float GrabHoldRequiredHands = 0.12f;
+        private const float MaxPinchHoldDistance = 0.35f;
 
         // --- État de la vague haptique ---
         private float _hapticWaveTimer = 0f;
         private float _lastScaleDirection = 0f;
 
         // --- État du son ---
-        private AudioSource _introSource;     // joue le segment 0 -> 4 s, une seule fois
-        private AudioSource _loopSource;      // joue le segment 4 s -> fin, en boucle
-        private float _lastScaleTime = float.NegativeInfinity; // dernier changement d'échelle
-        private float _scalingSince = -1f;    // début du geste audio (-1 = inactif)
-        private bool _loopStarted;           // la boucle a-t-elle déjà pris le relais ?
-        private Coroutine _fadeRoutine;      // fondu de sortie en cours
+        /// <summary>Vitesses de changement de taille (log par seconde) : en dessous, silence (tremblement) ; au-dessus, volume maximal.</summary>
+        private const float VitesseAudibleMin = 0.02f, VitesseAudiblePleine = 0.4f;
+        private const float DureeMonteeSon = 0.06f, DureeDescenteSon = 0.2f;
+        private const float DouceurHauteur = 12f;
+        private const float HauteurMin = 0.25f, HauteurMax = 4f;
 
-        /// <summary>
-        /// Prépare les deux AudioSource au démarrage.
-        /// Si un AudioSource a été câblé dans l'inspector (scaleAudio) il sert de source
-        /// d'intro, sinon on en crée un. La source de boucle est toujours créée par le
-        /// script : une même source ne peut pas jouer deux clips différents en même temps.
-        /// </summary>
+        private AudioSource _sourceNote;
+        private static AudioClip s_noteGeneree;
+        private float _lastScaleTime = float.NegativeInfinity; // dernier changement d'échelle
+        private float _variationEchelle;      // changement de taille depuis la dernière frame (log)
+        private float _activiteSon;           // 0..1, suit la vitesse du geste
+
+                // [LH-Scale] Mise en place du registre bi-manuel et ecouteurs d interaction
         private void Awake()
         {
-            if (scaleAudio != null)
-            {
-                _introSource = scaleAudio;
-                ConfigureSource(_introSource);
-            }
-            else
-            {
-                _introSource = gameObject.AddComponent<AudioSource>();
-                ConfigureSource(_introSource);
-            }
-
-            _loopSource = gameObject.AddComponent<AudioSource>();
-            ConfigureSource(_loopSource);
-            _loopSource.clip = loopClip;
-            _loopSource.loop = true;
+            _sourceNote = gameObject.AddComponent<AudioSource>();
+            _sourceNote.playOnAwake = false;
+            _sourceNote.loop = true;
+            _sourceNote.volume = 0f;
+            _sourceNote.spatialBlend = spatialBlend;
+            _sourceNote.minDistance = minDistance;
+            _sourceNote.maxDistance = maxDistance;
+            _sourceNote.rolloffMode = AudioRolloffMode.Logarithmic;
+            _sourceNote.dopplerLevel = 0f; // pas de variation de hauteur parasite quand la main bouge
+            _sourceNote.clip = clipNote != null ? clipNote : NoteGeneree();
         }
 
+        /// <summary>
+        /// Note de base (330 Hz, la hauteur d'un objet à sa taille d'origine) avec une légère
+        /// harmonique. 1 seconde et des fréquences entières : la boucle est sans raccord.
+        /// La seconde voix à 331 Hz donne une ondulation lente, moins agressive qu'un bip pur.
+        /// </summary>
+        private static AudioClip NoteGeneree()
+        {
+            if (s_noteGeneree != null) return s_noteGeneree;
+
+            const int frequence = 44100;
+            float[] echantillons = new float[frequence];
+            for (int i = 0; i < frequence; i++)
+            {
+                float t = i / (float)frequence;
+                echantillons[i] = 0.5f * Mathf.Sin(2f * Mathf.PI * 330f * t)
+                                + 0.35f * Mathf.Sin(2f * Mathf.PI * 331f * t)
+                                + 0.15f * Mathf.Sin(2f * Mathf.PI * 660f * t);
+            }
+            s_noteGeneree = AudioClip.Create("VRSon_Echelle", frequence, 1, frequence, false);
+            s_noteGeneree.SetData(echantillons, 0);
+            return s_noteGeneree;
+        }
+
+        /// <summary>Hauteur de lecture pour une taille donnée (1 = taille d'origine) : plus c'est grand, plus c'est grave.</summary>
+        public static float HauteurPourTaille(float ratio, float exposant)
+        {
+            return Mathf.Clamp(Mathf.Pow(Mathf.Max(ratio, 0.001f), -exposant), HauteurMin, HauteurMax);
+        }
+
+                // [L. Hamlat] Calcul du facteur de redimensionnement proportionnel en temps reel
         private void Update()
         {
             ResolveOtherHand();
@@ -296,12 +314,14 @@ namespace RemodelerLeReel.VR
             bool allowStick = mode == GrabScaleMode.Thumbstick || mode == GrabScaleMode.Both;
 
             if (allowPinch) UpdateTwoHandsPinch();
-            IsScalingActive = true;
 
-            // ⚠️ UN SEUL GESTE À LA FOIS : le pincement à deux mains et le stick
-            // écrivaient tous les deux l'échelle en même temps (dérive). Quand le
-            // pincement est en cours, le stick est ignoré (et inversement).
+            // Un seul geste à la fois : si le pincement est en cours, le stick est ignoré
             if (allowStick && !_pinching) UpdateThumbstick();
+            else _stickScalingActive = false;
+
+            // IsScalingActive n'est vrai que si un geste de redimensionnement est RÉELLEMENT en cours
+            // (évite de bloquer l'escalade ou la locomotion quand on porte simplement un objet)
+            IsScalingActive = _pinching || _stickScalingActive;
 
             UpdateScaleAudio();
             UpdateScaleHaptics();
@@ -310,7 +330,7 @@ namespace RemodelerLeReel.VR
         private void OnDisable()
         {
             ResetGesture();
-            StopScaleAudio(immediate: true);
+            CouperSon();
         }
 
         /// <summary>
@@ -374,15 +394,13 @@ namespace RemodelerLeReel.VR
         }
 
         /// <summary>
-        /// Geste à deux mains : une main tient l'objet, l'autre doit rester enfoncée
-        /// (grip ou trigger). Tant que ce bouton est maintenu, l'écartement entre les
-        /// deux manettes pilote l'échelle.
+        /// Geste à deux mains : une main tient l'objet, l'autre main doit RÉELLEMENT saisir l'objet
+        /// (prise maintenue au contact de l'objet). Tant que les deux mains tiennent l'objet,
+        /// l'écartement pilote l'échelle.
         /// </summary>
         private void UpdateTwoHandsPinch()
         {
-            // La main "libre" est celle qui ne tient pas l'objet : c'est elle qu'on
-            // surveille. Si c'est la main de ce composant qui tient, l'autre est libre
-            // (et inversement).
+            // La main « libre » est celle qui ne tient pas l'objet : c'est elle qu'on surveille.
             bool holderIsThisHand = _holderHand == transform;
             Transform freeHand = holderIsThisHand
                 ? (_otherHand != null ? _otherHand.transform : null)
@@ -394,43 +412,82 @@ namespace RemodelerLeReel.VR
                 return;
             }
 
+            // PRIORITÉ À L'ESCALADE : si le joueur est en train de grimper (déplacement actif),
+            // la main libre sert à la locomotion et non à redimensionner l'objet tenu.
+            if (VRGrabLocomotion.IsClimbingActive)
+            {
+                _freeHandGrabHoldTime = 0f;
+                if (_pinching) EndPinch();
+                return;
+            }
+
             XRNode freeNode = holderIsThisHand ? (_otherHand != null ? _otherHand.handNode : handNode) : handNode;
-            bool pressed = ReadPressValue(freeNode) >= pinchPressThreshold
-                || VRHandGestures.IsGrabGesture(freeNode, _pinching);
+            bool isHandMode = VRModalityManager.IsHandMode;
+            bool grabInput = isHandMode
+                ? VRHandGestures.IsGrabGesture(freeNode, _pinching)
+                : ReadPressValue(freeNode) >= pinchPressThreshold;
 
-            // Front montant / descendant de l'appui = début / fin du pincement.
-            // Le pincement ne DÉMARRE que si la main libre touche l'objet : les deux mains
-            // doivent être sur l'objet (la main qui tient le touche déjà).
-            if (pressed && !_pinching && IsTouchingTarget(freeHand.position)) BeginPinch(freeHand);
-            else if (!pressed && _pinching) EndPinch();
+            float distToObject = DistanceToTarget(freeHand.position);
+            bool touching = distToObject <= pinchTouchDistance;
 
-            if (_pinching) ContinuePinch(freeHand);
+            if (grabInput && touching)
+            {
+                _freeHandGrabHoldTime += Time.deltaTime;
+            }
+            else if (!grabInput)
+            {
+                _freeHandGrabHoldTime = 0f;
+            }
+
+            // Pour déclencher le redimensionnement, il faut VRAIMENT saisir l'objet à deux mains :
+            // la main libre doit être au contact de l'objet (< 15 cm) et fermer sa prise
+            bool canStartPinch = grabInput && touching && (!isHandMode || _freeHandGrabHoldTime >= GrabHoldRequiredHands);
+
+            if (canStartPinch && !_pinching)
+            {
+                BeginPinch(freeHand);
+            }
+            // Fin du pincement : prise relâchée, ou main libre à plus de 35 cm de l'objet
+            else if (_pinching && (!grabInput || distToObject > MaxPinchHoldDistance))
+            {
+                EndPinch();
+            }
+
+            if (_pinching)
+            {
+                ContinuePinch(freeHand);
+            }
         }
 
         /// <summary>
-        /// Mémorise la position de départ du geste : l'écartement des manettes et la
-        /// taille de l'objet à cet instant. Tout le pincement se calcule par rapport à
-        /// ces deux valeurs (et non par accumulation frame après frame), ce qui évite
-        /// toute dérive.
+        /// Distance la plus courte entre un point monde et les colliders actifs de l'objet cible.
         /// </summary>
-        /// <summary>Vrai si le point est à moins de pinchTouchDistance d'un collider de l'objet.</summary>
-        private bool IsTouchingTarget(Vector3 point)
+        private readonly List<Collider> _collidersCible = new List<Collider>();
+
+        private float DistanceToTarget(Vector3 point)
         {
-            if (_targetTransform == null) return false;
-            var colliders = _targetTransform.GetComponentsInChildren<Collider>();
-            float maxSqr = pinchTouchDistance * pinchTouchDistance;
-            for (int i = 0; i < colliders.Length; i++)
+            if (_targetTransform == null) return float.MaxValue;
+            List<Collider> colliders = _collidersCible; // réutilisée : appelée à chaque image tant qu'un objet est tenu
+            _targetTransform.GetComponentsInChildren(colliders);
+            float minDistance = float.MaxValue;
+            for (int i = 0; i < colliders.Count; i++)
             {
                 Collider c = colliders[i];
                 if (c == null || !c.enabled || c.isTrigger) continue;
                 // ClosestPoint n'est pas supporté par les MeshCollider concaves : repli sur les bounds.
                 bool exact = !(c is MeshCollider mc) || mc.convex;
-                float sqr = exact
-                    ? (c.ClosestPoint(point) - point).sqrMagnitude
-                    : c.bounds.SqrDistance(point);
-                if (sqr <= maxSqr) return true;
+                float d = exact
+                    ? Vector3.Distance(c.ClosestPoint(point), point)
+                    : Mathf.Sqrt(c.bounds.SqrDistance(point));
+                if (d < minDistance) minDistance = d;
             }
-            return false;
+            return minDistance;
+        }
+
+        /// <summary>Vrai si le point est à moins de pinchTouchDistance d'un collider de l'objet.</summary>
+        private bool IsTouchingTarget(Vector3 point)
+        {
+            return DistanceToTarget(point) <= pinchTouchDistance;
         }
 
         private void BeginPinch(Transform freeHand)
@@ -447,14 +504,30 @@ namespace RemodelerLeReel.VR
         }
 
         /// <summary>
-        /// Éloigner les mains = multiplier par distance / distance de départ.
-        /// Le facteur est lissé exponentiellement (indépendant du framerate) pour que le
-        /// geste ne soit pas saccadé quand les manettes tremblent.
+        /// Éloigner les mains = agrandir ; rapprocher = rétrécir.
+        /// Formule exponentielle (rapport d'écartement puissance sensibilité) avec zone morte de 1 cm
+        /// et plancher à 10 cm pour éviter les divisions explosives.
         /// </summary>
         private void ContinuePinch(Transform freeHand)
         {
             float distance = Mathf.Max(Vector3.Distance(_holderHand.position, freeHand.position), minPinchDistance);
-            float rawRatio = distance / _pinchStartDistance;
+            float delta = distance - _pinchStartDistance;
+
+            // Zone morte de 1 cm pour absorber les tremblements naturels de la main
+            const float deadzone = 0.01f;
+            if (Mathf.Abs(delta) <= deadzone)
+            {
+                delta = 0f;
+            }
+            else
+            {
+                delta -= Mathf.Sign(delta) * deadzone;
+            }
+
+            // Distance de référence avec plancher à 10 cm pour sécuriser le départ
+            float baseDist = Mathf.Max(_pinchStartDistance, 0.10f);
+            float effectiveDist = Mathf.Max(baseDist + delta, minPinchDistance);
+            float rawRatio = effectiveDist / baseDist;
             float wanted = Mathf.Pow(rawRatio, pinchSensitivity);
 
             _pinchFactor = pinchSmoothing > 0f
@@ -474,24 +547,30 @@ namespace RemodelerLeReel.VR
         {
             _pinching = false;
             _pinchFactor = 1f;
+            _freeHandGrabHoldTime = 0f;
         }
 
         /// <summary>
-        /// Geste au thumbstick : on lit l'axe vertical de la main qui tient l'objet.
-        /// Le facteur est une exponentielle du temps (e^(axe * sensibilité * dt)) donc la
-        /// vitesse est la même à 72 et 120 Hz, et le stick à moitié = demi-vitesse.
+        /// Geste au thumbstick : on lit l'axe vertical de la main libre.
+        /// Bloqué à mains nues, avec une zone morte de 15 %.
         /// </summary>
         private void UpdateThumbstick()
         {
+            _stickScalingActive = false;
+
+            // En mode mains nues (hand tracking), aucun stick n'est utilisé
+            if (VRModalityManager.IsHandMode) return;
+
             // On lit le stick de la MAIN LIBRE (voir ScaleStickNode) : le joueur
             // tient l'objet d'une main et règle l'échelle avec l'autre.
             float axis = ReadThumbstickAxis(XRNode.RightHand);
-            if (Mathf.Abs(axis) < 0.001f) return;
+            if (Mathf.Abs(axis) < 0.15f) return;
+
+            _stickScalingActive = true;
 
             // Le stick est pris par l'échelle : on le déclare aux autres scripts
             // (téléportation / locomotion / préhension) pour qu'ils s'effacent
-            // le temps du geste. Sans ça, pousser le stick téléporte le joueur
-            // ET redimensionne l'objet en même temps.
+            // le temps du geste.
             VRInputLock.BeginScaleMode(ScaleStickNode);
 
             if (invertStick) axis = -axis;
@@ -499,6 +578,7 @@ namespace RemodelerLeReel.VR
             float factor = Mathf.Exp(axis * stickSensitivity * Time.deltaTime);
             ApplyWorldScale(_targetTransform.lossyScale * factor);
         }
+
 
         /// <summary>
         /// Unique point d'écriture de l'échelle, appelé par les deux gestes.
@@ -542,6 +622,7 @@ namespace RemodelerLeReel.VR
 
             _lastScaleTime = Time.unscaledTime;
             _lastScaleDirection = scaleRatio - 1f;
+            _variationEchelle += Mathf.Abs(Mathf.Log(Mathf.Max(scaleRatio, 1e-6f)));
 
             if (_scaleMass && _baseMass > 0f && _baseWorldSize > 1e-6f && _target != null)
             {
@@ -551,139 +632,52 @@ namespace RemodelerLeReel.VR
         }
 
         /// <summary>
-        /// Retour sonore : le segment d'intro est joué une fois quand le scale commence,
-        /// puis le segment de boucle prend le relais à partir de autoLoopDelay / loopDelay
-        /// et tourne jusqu'à la fin du geste (fondu de sortie à la fin).
+        /// Retour sonore : la hauteur suit la taille de l'objet, le volume suit la vitesse
+        /// du geste (montée rapide, descente douce pour éviter les clics).
         /// </summary>
         private void UpdateScaleAudio()
         {
-            bool scaling = Time.unscaledTime - _lastScaleTime < ScaleActiveWindow;
+            if (_sourceNote == null) return;
 
-            // Front montant : le scale commence -> on joue le segment d'intro.
-            if (scaling && _scalingSince < 0f)
+            float dt = Time.unscaledDeltaTime;
+            float vitesse = dt > 0f ? _variationEchelle / dt : 0f;
+            _variationEchelle = 0f;
+
+            float cible = Mathf.InverseLerp(VitesseAudibleMin, VitesseAudiblePleine, vitesse);
+            float duree = cible > _activiteSon ? DureeMonteeSon : DureeDescenteSon;
+            _activiteSon = Mathf.MoveTowards(_activiteSon, cible, dt / duree);
+
+            if (_target != null && _baseWorldSize > 1e-6f && _targetTransform != null)
             {
-                StartScaleAudio();
-            }
-            // Front descendant : plus aucun changement d'échelle depuis 0,1 s -> on coupe.
-            else if (!scaling && _scalingSince >= 0f)
-            {
-                StopScaleAudio(immediate: false);
+                float hauteur = HauteurPourTaille(MaxAxis(_targetTransform.lossyScale) / _baseWorldSize, exposantHauteur);
+                // Note silencieuse : directement à la bonne hauteur, sans glissando au départ.
+                _sourceNote.pitch = _sourceNote.isPlaying
+                    ? Mathf.Lerp(_sourceNote.pitch, hauteur, 1f - Mathf.Exp(-DouceurHauteur * dt))
+                    : hauteur;
             }
 
-            // Une fois l'intro terminé (4 s), la boucle démarre et tourne jusqu'à la fin
-            // du geste. Le seuil est mesuré depuis le DÉBUT du scale, pas depuis la fin
-            // de l'intro, donc les deux ne se chevauchent jamais.
-            if (scaling && _scalingSince >= 0f && !_loopStarted &&
-                Time.unscaledTime - _scalingSince >= CurrentLoopDelay)
+            VRBanqueSons banque = VRBanqueSons.Instance;
+            float general = banque == null ? 1f : (banque.actif ? banque.volumeGeneral : 0f);
+            float volume = volumeSon * _activiteSon * general;
+            _sourceNote.volume = volume;
+
+            if (volume > 0.0005f)
             {
-                if (_loopSource.clip != loopClip) _loopSource.clip = loopClip;
-                if (_loopSource.clip != null) _loopSource.Play();
-                _loopStarted = true;
+                if (!_sourceNote.isPlaying) _sourceNote.Play();
+            }
+            else if (_sourceNote.isPlaying)
+            {
+                _sourceNote.Stop();
             }
         }
 
-        /// <summary>
-        /// Début du geste audio : on note l'heure de départ (sert de référence pour le
-        /// déclenchement de la boucle) et on joue l'intro une seule fois, sans boucle.
-        /// Un fondu en cours est annulé : le son repart immédiatement à volume normal.
-        /// </summary>
-        private void StartScaleAudio()
+        /// <summary>Coupe la note au sec (désactivation du composant).</summary>
+        private void CouperSon()
         {
-            _scalingSince = Time.unscaledTime;
-            _loopStarted = false;
-
-            if (_fadeRoutine != null)
-            {
-                StopCoroutine(_fadeRoutine);
-                _fadeRoutine = null;
-            }
-
-            if (introClip == null) return;
-
-            _introSource.clip = introClip;
-            _introSource.loop = false;
-            _introSource.volume = scaleVolume;
-            _introSource.Play();
+            _variationEchelle = 0f;
+            _activiteSon = 0f;
+            if (_sourceNote != null) _sourceNote.Stop();
         }
-
-        /// <summary>
-        /// Fin du geste audio. immediate = true coupe tout au sec (utilisé à la
-        /// désactivation du composant), sinon on passe par un fondu pour éviter le clic
-        /// de l'arrêt.
-        /// </summary>
-        private void StopScaleAudio(bool immediate)
-        {
-            _scalingSince = -1f;
-            _loopStarted = false;
-
-            if (_introSource == null || _loopSource == null) return;
-
-            if (immediate || fadeOutDuration <= 0f)
-            {
-                if (_fadeRoutine != null)
-                {
-                    StopCoroutine(_fadeRoutine);
-                    _fadeRoutine = null;
-                }
-
-                _introSource.Stop();
-                _loopSource.Stop();
-                _introSource.volume = scaleVolume;
-                _loopSource.volume = scaleVolume;
-                return;
-            }
-
-            if (_fadeRoutine == null) _fadeRoutine = StartCoroutine(FadeOutScaleAudio());
-        }
-
-        /// <summary>
-        /// Descend le volume des deux sources jusqu'à 0 puis les arrête. On utilise
-        /// unscaledDeltaTime pour que le fondu se termine même si timeScale vaut 0.
-        /// Le volume est restauré à scaleVolume à la fin pour être prêt au geste suivant.
-        /// </summary>
-        private IEnumerator FadeOutScaleAudio()
-        {
-            float elapsed = 0f;
-            while (elapsed < fadeOutDuration)
-            {
-                elapsed += Time.unscaledDeltaTime;
-                float factor = 1f - Mathf.Clamp01(elapsed / fadeOutDuration);
-                _introSource.volume = scaleVolume * factor;
-                _loopSource.volume = scaleVolume * factor;
-                yield return null;
-            }
-
-            _introSource.Stop();
-            _loopSource.Stop();
-            _introSource.volume = scaleVolume;
-            _loopSource.volume = scaleVolume;
-            _fadeRoutine = null;
-        }
-
-        /// <summary>
-        /// Réglages communs aux deux sources. Le son est spatialisé (spatialBlend = 1
-        /// par défaut) pour qu'il vienne de la manette qui scale ; dopplerLevel = 0
-        /// évite les variations de hauteur parasites quand on déplace la main.
-        /// </summary>
-        private void ConfigureSource(AudioSource source)
-        {
-            source.playOnAwake = false;
-            source.loop = false;
-            source.volume = scaleVolume;
-            source.spatialBlend = spatialBlend;
-            source.minDistance = minDistance;
-            source.maxDistance = maxDistance;
-            source.rolloffMode = AudioRolloffMode.Logarithmic;
-            source.dopplerLevel = 0f;
-        }
-
-        /// <summary>
-        /// Délai avant la boucle : par défaut la durée réelle de l'intro (4 s), donc il
-        /// suffit de remplacer les clips sans retoucher ce réglage. Décoché (ou sans
-        /// introClip), on retombe sur la valeur manuelle loopDelay.
-        /// </summary>
-        private float CurrentLoopDelay =>
-            autoLoopDelay && introClip != null ? introClip.length : loopDelay;
 
         /// <summary>
         /// Bornage de la taille. Deux familles de limites, combinées :
@@ -716,6 +710,8 @@ namespace RemodelerLeReel.VR
         private void ResetGesture()
         {
             IsScalingActive = false;
+            _stickScalingActive = false;
+            _freeHandGrabHoldTime = 0f;
             _target = null;
             _targetTransform = null;
             _marker = null;
