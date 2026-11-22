@@ -137,3 +137,6 @@ Application_Unity/Assets/Plugins.meta
 # Journaux de telemetrie de test
 Journaux_PCVR/*.csv
 Application_Unity/Journaux_PCVR/*.csv
+
+# Journaux de telemetrie ecrits a chaque partie (regeneres, pas a versionner)
+Application_Unity/Journaux_PCVR/
